@@ -265,10 +265,10 @@ def train_siamese_model(model):
 	                          )
 
 	with open( os.path.join( './model_data/model_specs', filename ) + '.config', 'w' ) as f:
-		f.write( str( model.get_config( ) ) )
+		f.write( str( model['siamese'].get_config( ) ) )
 
 	with open( os.path.join( './model_data/model_specs', filename + '.json' ), 'w' ) as f:
-		f.write( model.to_json( ) )
+		f.write( model['siamese'].to_json( ) )
 
 	with open( os.path.join( './model_data/model_specs', filename ) + '.hist', 'w' ) as f:
 		f.write( str( hist.history ) )
