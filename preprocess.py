@@ -1,5 +1,5 @@
 """
-Created by John P Cavalieri and Santiaga Paredes
+Created by John P Cavalieri and Santiago Paredes
 """
 from __future__ import print_function
 import os
