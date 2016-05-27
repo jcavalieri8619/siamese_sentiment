@@ -1,0 +1,2 @@
+To train model must create the directory <train> here and then store the <pos> and <neg> directories
+from stanford sentiment data inside <train>
