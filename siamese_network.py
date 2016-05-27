@@ -213,8 +213,7 @@ def build_siamese_model():
 
 
 def train_siamese_model(model):
-
-	print( 'Loading data...' )
+	print( 'building pairs of reviews for siamese model input...' )
 
 	((trainingSets), (devSets)) = build_siamese_input( VocabSize,
 	                                                   useWords = USEWORDS,
