@@ -4,30 +4,25 @@ Created by John P Cavalieri
 """
 from __future__ import print_function
 
-
-from keras.models import Model
-from keras.layers.core import (Dense, Dropout,
-                               Activation, Flatten)
-from keras.engine.topology import merge
-from keras.layers.embeddings import Embedding
-from keras.layers.convolutional import Convolution1D, MaxPooling1D
-from keras.callbacks import ModelCheckpoint, EarlyStopping
-from keras.layers import Input
-from keras.optimizers import SGD
-from convert_review import build_design_matrix, build_siamese_input
-from siamese_activations import vectorDifference,squaredl2,euclidDist
-from loss_functions import contrastiveLoss
-from siamese_utils import merged_outshape
-import keras.backend as K
-import numpy as np
-import cPickle
-import random
-import modelParameters
-import os
 import datetime
+import os
 
+from keras.callbacks import ModelCheckpoint, EarlyStopping
+from keras.engine.topology import merge
+from keras.layers import Input
+from keras.layers.convolutional import Convolution1D, MaxPooling1D
+from keras.layers.core import (Dense, Dropout,
+                               Flatten)
+from keras.layers.embeddings import Embedding
+from keras.models import Model
 
-DEVSPLIT = 14
+import modelParameters
+from convert_review import build_siamese_input
+from loss_functions import contrastiveLoss
+from siamese_activations import vectorDifference, squaredl2
+from siamese_utils import merged_outshape
+
+DEVSPLIT = modelParameters.devset_split
 USEWORDS = True
 
 if USEWORDS:
