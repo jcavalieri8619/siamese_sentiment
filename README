@@ -27,7 +27,7 @@ models = build_siamese_model()
 
 
 #this call will train the model. All training params can be set
-#inside the siamese_network_3 module (num epochs, CNN params, ect..).
+#inside the siamese_network module (num epochs, CNN params, ect..).
 #It returns the training data set, dev set, and training history.
 
 trainingData,devData,hist = train_siamese_model(models)
