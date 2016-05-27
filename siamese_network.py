@@ -73,8 +73,8 @@ pool_len4 = 2
 
 embedding_dims = 200
 
-hidden_dims1 = 1000
-hidden_dims2 = 250
+dense_dims1 = 1000
+dense_dims2 = 250
 
 num_epochs = 5
 
@@ -155,13 +155,13 @@ def build_siamese_model():
 
 	layer = Flatten( )( layer )
 
-	sharedDense1 = Dense( hidden_dims1, activation = 'relu', )
+	sharedDense1 = Dense( dense_dims1, activation = 'relu', )
 
 	layer = sharedDense1( layer )
 
 	layer = Dropout( 0.40 )( layer )
 
-	sharedDense2 = Dense( hidden_dims2, activation = 'relu' )
+	sharedDense2 = Dense( dense_dims2, activation = 'relu' )
 
 	out = sharedDense2( layer )
 
