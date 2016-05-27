@@ -242,9 +242,7 @@ def train_siamese_model(model):
 
 	call_backs = [ checkpoint, earlyStop ]
 
-
-
-	#TODO is sent label included then the input dictions includes the following:
+	# TODO if sent label included then the input dictionary includes
 	#{'Lsentprob': y_left, 'Rsentprob': y_right} and same for validation data inputs
 
 	hist = model['siamese'].fit( { 'Lreview': X_left, 'Rreview': X_right,  },
