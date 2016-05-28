@@ -34,12 +34,6 @@ else:
 	maxReviewLen = modelParameters.MaxLen_c
 	skipTop = 0
 
-
-
-
-
-
-
 basename = "siamese_3_M{}".format(modelParameters.Margin)
 suffix = datetime.datetime.now( ).strftime( "%y%m%d_%I%M" )
 filename = "_".join( [ basename, suffix ] )
