@@ -3,21 +3,20 @@ Created by John P Cavalieri
 
 """
 from __future__ import print_function
-import numpy
-import os
+
 import cPickle
 import multiprocessing
-import modelParameters
+import os
 import random
-from itertools import combinations
 from functools import partial
+from itertools import combinations
+
+import numpy
+
+import modelParameters
 from preprocess import (generate_word_list, generate_char_list,
                         generate_one_hot_maps, sentiment2reviews_map)
-                        
-                        
-                        
-                        
-                        
+
 # if your computer cannot generate all the pairs of input data
 # then set this to reduce the size of the original training data
 # from 21,000 to some smaller number i.e 10,000.  The original size
@@ -41,6 +40,8 @@ DEV_TARGET_VECTOR_PATH_CHAR = './model_data/dev_targetVect_c.pickle'
 TEST_SET_DATA_PATH_WORD = './model_data/test_set_data_w.pickle'
 TEST_SET_DATA_PATH_CHAR = './model_data/test_set_data_c.pickle'
 TEST_SET_ID_VECTOR = './model_data/test_set_ID_vect.pickle'
+
+random.seed( 1515 )
 
 
 def to_onehot_vector( reviewObject, vocab_size, one_hot_maps,
