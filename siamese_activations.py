@@ -61,7 +61,8 @@ class MahalanobisDist( Layer ):
 			del self.initial_weights
 
 	def call( self, x, mask = None ):
-		output = x * self.sigma * K.T.transpose( x )
+		output = K.T.transpose( x, axes = 1 ) * self.sigma * x
+		# K.reshape( output, (1,) )
 		return output
 
 	def get_config( self ):

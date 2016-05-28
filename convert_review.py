@@ -41,7 +41,8 @@ TEST_SET_DATA_PATH_WORD = './model_data/test_set_data_w.pickle'
 TEST_SET_DATA_PATH_CHAR = './model_data/test_set_data_c.pickle'
 TEST_SET_ID_VECTOR = './model_data/test_set_ID_vect.pickle'
 
-random.seed( 1515 )
+
+# random.seed( 1515 )
 
 
 def to_onehot_vector( reviewObject, vocab_size, one_hot_maps,
