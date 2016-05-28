@@ -189,8 +189,8 @@ def build_siamese_model():
 
 	#then that difference vector is fed into the final fully connected layer that
 	#outputs the energy i.e. squared euclidian distance ||leftbranch-rightbranch||
-	siamese_out = Dense( 1, activation = MahalanobisDist( init = 'uniform' ), name = 'energy_output' )( merged_vector )
-
+	last_layer = Dense( 1, )( merged_vector )
+	siamese_out = MahalanobisDist( init = 'uniform', name = 'energy_output' )( last_layer )
 
 
 	#TODO if sentiment label info included then inputs=[Lreview,Lsent_prob,Rreview,Rsent_prob]
