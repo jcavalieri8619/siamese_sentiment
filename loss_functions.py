@@ -2,7 +2,10 @@
 Created by John P Cavalieri on 5/27/16
 
 """
+import keras.backend as K
+
 from modelParameters import Margin
+
 
 def contrastiveLoss( y_true, y_pred ):
 	x1 = y_true * y_pred
