@@ -7,7 +7,7 @@ If your computer runs out of RAM during training its because of the
 number of pairs that must be generated is massive. Set the
 TRAIN_LOW_RAM_CUTOFF and DEV_LOW_RAM_CUTOFF paramters inside convert_review module
 to prevent this from happening. I have 16GBs of RAM and the current
-settings work for me but if you have less you will need to set this
+settings work for me but if you have less you will need to set these
 parameters
 
 training is set up with check points so after each epoch the weights will
