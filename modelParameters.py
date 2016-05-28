@@ -20,7 +20,7 @@ UNK_INDEX = 0
 
 
 #margin used in contrastive loss function
-Margin=1.85
+Margin = 1.68
 
 #assuming full vocab is 85000; much higher in reality
 VocabSize_w = (73000 +(UNK_INDEX+1)*(UNK_INDEX>0))

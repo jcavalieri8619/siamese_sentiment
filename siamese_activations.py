@@ -2,8 +2,9 @@
 Created by John P Cavalieri on 5/27/16
 
 """
-import numpy as np
 import keras.backend as K
+from keras import initializations
+from keras.engine.topology import Layer
 
 
 def euclidDist( inputs ):
@@ -29,3 +30,41 @@ def squaredl2( X ):
 	K.reshape( output, (1,) )
 	return output
 
+
+class MahalanobisDist( Layer ):
+	'''
+	# Input shape
+		Arbitrary. Use the keyword argument `input_shape`
+		(tuple of integers, does not include the samples axis)
+		when using this layer as the first layer in a model.
+	# Output shape
+		Same shape as the input.
+	# Arguments
+		init: initialization function for the weights.
+		weights: initial weights, as a list of a single numpy array.
+
+	'''
+
+	def __init__( self, init = 'zero', weights = None, **kwargs ):
+		self.supports_masking = False
+		self.init = initializations.get( init )
+		self.initial_weights = weights
+		super( MahalanobisDist, self ).__init__( **kwargs )
+
+	def build( self, input_shape ):
+		self.sigma = self.init( (input_shape[ 1 ], input_shape[ 1 ]),
+		                        name = '{}_sigma'.format( self.name ) )
+		self.trainable_weights = [ self.sigma ]
+
+		if self.initial_weights is not None:
+			self.set_weights( self.initial_weights )
+			del self.initial_weights
+
+	def call( self, x, mask = None ):
+		output = x * self.sigma * K.T.transpose( x )
+		return output
+
+	def get_config( self ):
+		config = { 'init': self.init.__name__ }
+		base_config = super( MahalanobisDist, self ).get_config( )
+		return dict( list( base_config.items( ) ) + list( config.items( ) ) )

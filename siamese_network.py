@@ -19,7 +19,7 @@ from keras.models import Model
 import modelParameters
 from convert_review import build_siamese_input
 from loss_functions import contrastiveLoss
-from siamese_activations import vectorDifference, squaredl2
+from siamese_activations import vectorDifference, MahalanobisDist
 from siamese_utils import merged_outshape
 
 DEVSPLIT = modelParameters.devset_split
@@ -191,9 +191,11 @@ def build_siamese_model():
 	merged_vector = merge( [ leftbranch, rightbranch ], mode = vectorDifference, output_shape = merged_outshape,
 	                       name = 'merged_vector' )
 
+	mahalanobis = MahalanobisDist( init = 'uniform' )
+
 	#then that difference vector is fed into the final fully connected layer that
 	#outputs the energy i.e. squared euclidian distance ||leftbranch-rightbranch||
-	siamese_out = Dense( 1, activation = squaredl2, name = 'energy_output' )( merged_vector )
+	siamese_out = Dense( 1, activation = mahalanobis, name = 'energy_output' )( merged_vector )
 
 
 
