@@ -64,9 +64,11 @@ def to_onehot_vector( reviewObject, vocab_size, one_hot_maps,
 	return (vector_of_onehots, rating)
 
 
-def build_design_matrix( vocab_size, use_words,
-                         skip_top = 0, maxlen = None, dev_split = None,
+def build_design_matrix( vocab_size, use_words,skip_top = 0, maxlen = None, dev_split = None,
                          verbose = True, **kwargs ):
+                         	
+                         	
+                         	
 	if kwargs.get( 'test_data', None ):
 
 		assert dev_split is not None, "cannot generate dev set for test data set"
