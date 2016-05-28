@@ -13,6 +13,18 @@ from itertools import combinations
 from functools import partial
 from preprocess import (generate_word_list, generate_char_list,
                         generate_one_hot_maps, sentiment2reviews_map)
+                        
+                        
+                        
+                        
+                        
+# if your computer cannot generate all the pairs of input data
+# then set this to reduce the size of the original training data
+# from 21,000 to some smaller number i.e 10,000.  The original size
+# of dev set size can be set in modelParameters but at the default 14% its
+# size is 3500 so you will probably want to reduce this as well.
+TRAIN_LOW_RAM_CUTOFF = None
+DEV_LOW_RAM_CUTOFF = None
 
 DESIGN_MATRIX_PATH_WORD = './model_data/designMatrix_w.pickle'
 TARGET_VECTOR_PATH_WORD = './model_data/targetVect_w.pickle'
@@ -284,13 +296,7 @@ def build_siamese_input( VocabSize, useWords, skipTop = 0, devSplit = None, **kw
 	:return:
 	"""
 
-	# if your computer cannot generate all the pairs of input data
-	# then set this to reduce the size of the original training data
-	# from 21,000 to some smaller number i.e 10,000.  The original size
-	# of dev set size can be set in modelParameters but at the default 14% its
-	# size is 3500 so you will probably want to reduce this as well.
-	TRAIN_LOW_RAM_CUTOFF = None
-	DEV_LOW_RAM_CUTOFF = None
+	
 
 
 
