@@ -277,7 +277,7 @@ def build_design_matrix( vocab_size, use_words,skip_top = 0, maxlen = None, dev_
 			# TODO for some reason pickling the char design matrix uses 10+ GB of RAM
 			# the actual size of the matrix is much less
 			# so we just use the design matrix instead of pickling
-
+		##
 		# with open( DESIGN_MATRIX_PATH_CHAR, 'wb' ) as f:
 		# 	cPickle.dump( designMatrix, f )
 		# with open( TARGET_VECTOR_PATH_CHAR, 'wb' ) as f:
@@ -317,10 +317,11 @@ def build_siamese_input( VocabSize, useWords, skipTop = 0, devSplit = None, **kw
 	 RAM then set TRAIN_LOW_RAM_CUTOFF at the top of the module to
 	 some x << 20,000
 
-	:param VocabSize:
-	:param useWords:
-	:param skipTop:
-	:param devSplit:
+	:param VocabSize: number of unique words in the vocabulary
+	:param useWords: True is using words and false is using characters
+	:param skipTop: stop word removal method--removes top K most frequent
+	words in training data
+	:param devSplit: percent of training data to split into dev set.
 	:param kwargs:
 	:return:
 	"""
