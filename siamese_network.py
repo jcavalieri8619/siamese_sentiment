@@ -38,7 +38,7 @@ basename = "siamese_3_3".format( modelParameters.Margin )
 suffix = datetime.datetime.now( ).strftime( "%y%m%d_%I%M" )
 filename = "_".join( [ basename, suffix ] )
 
-batch_size = 20
+batch_size = 80
 
 num_filters1 = 600
 filter_length1 = 3
