@@ -41,8 +41,7 @@ TEST_SET_DATA_PATH_WORD = './model_data/test_set_data_w.pickle'
 TEST_SET_DATA_PATH_CHAR = './model_data/test_set_data_c.pickle'
 TEST_SET_ID_VECTOR = './model_data/test_set_ID_vect.pickle'
 
-
-# random.seed( 1515 )
+random.seed( 1515 )
 
 
 def to_onehot_vector( reviewObject, vocab_size, one_hot_maps,
@@ -313,10 +312,9 @@ def build_siamese_input( VocabSize, useWords, skipTop = 0, devSplit = None, **kw
 	DEVCOMBO_SIZE = modelParameters.devcomboSize
 
 	#these cutoffs reduce the final training and dev set sizes
-	#after they have been created to speed up training. Right now
-	#I am training with 25000 examples and validating on 3000 examples
-	#these paramters will not help if you are low on RAM. see above
-	TRAIN_CUTOFF = 25000
+	# after they have been created to speed up training.
+	# these paramters will not help if you are low on RAM. see top of module
+	TRAIN_CUTOFF = 35000
 	DEV_CUTOFF = 3000
 
 
@@ -449,6 +447,15 @@ def build_siamese_input( VocabSize, useWords, skipTop = 0, devSplit = None, **kw
 
 	similarity_labels = numpy.zeros( (len( Traincombo[:TRAIN_CUTOFF] ), 1) )
 
+	Xtest_left = numpy.zeros( (len( Traincombo[ TRAIN_CUTOFF: ] ), modelParameters.MaxLen_w) )
+	Xtest_right = numpy.zeros( (len( Traincombo[ TRAIN_CUTOFF: ] ), modelParameters.MaxLen_w) )
+
+	ytest_left = numpy.zeros( (len( Traincombo[ TRAIN_CUTOFF: ] ), 1) )
+	ytest_right = numpy.zeros( (len( Traincombo[ TRAIN_CUTOFF: ] ), 1) )
+
+	similarity_testlabels = numpy.zeros( (len( Traincombo[ TRAIN_CUTOFF: ] ), 1) )
+
+
 	random.shuffle( Traincombo )
 	for idx, (left, right, similar_label) in enumerate( Traincombo[:TRAIN_CUTOFF] ):
 		X_left[ idx, : ], y_left[ idx, 0 ] = left
@@ -457,10 +464,16 @@ def build_siamese_input( VocabSize, useWords, skipTop = 0, devSplit = None, **kw
 
 		similarity_labels[ idx, 0 ] = similar_label
 
+	for idx, (left, right, similar_label) in enumerate( Traincombo[ TRAIN_CUTOFF: ] ):
+		Xtest_left[ idx, : ], ytest_left[ idx, 0 ] = left
+
+		Xtest_right[ idx, : ], ytest_right[ idx, 0 ] = right
+
+		similarity_testlabels[ idx, 0 ] = similar_label
+
 	if devSplit is None:
-		# return form is ( (training),(dev) )
-		# where devInput is the None tuple if dev set not used
-		return ((X_left, y_left, X_right, y_right, similarity_labels), (None,))
+		return ((X_left, y_left, X_right, y_right, similarity_labels), (None,),
+		        (Xtest_left, ytest_left, Xtest_right, ytest_right, similarity_testlabels),)
 
 
 
@@ -483,7 +496,8 @@ def build_siamese_input( VocabSize, useWords, skipTop = 0, devSplit = None, **kw
 
 
 	return ((X_left, y_left, X_right, y_right, similarity_labels),
-	        (Xdev_left, ydev_left, Xdev_right, ydev_right, similarity_devlabels))
+	        (Xdev_left, ydev_left, Xdev_right, ydev_right, similarity_devlabels),
+	        (Xtest_left, ytest_left, Xtest_right, ytest_right, similarity_testlabels),)
 
 
 if __name__ == '__main__':
