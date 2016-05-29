@@ -72,7 +72,8 @@ def build_design_matrix( vocab_size, use_words,skip_top = 0, maxlen = None, dev_
                          	
                          	
 	if kwargs.get( 'test_data', None ):
-
+		# in testing phase with no targets
+		# attempting to find pickled data
 		assert dev_split is not None, "cannot generate dev set for test data set"
 
 		if use_words and os.path.isfile( TEST_SET_DATA_PATH_WORD ):
@@ -97,8 +98,11 @@ def build_design_matrix( vocab_size, use_words,skip_top = 0, maxlen = None, dev_
 
 
 	else:
+		# in training phase with data and targets
+		# attempting to find pickled data
 
 		if use_words and os.path.isfile( DESIGN_MATRIX_PATH_WORD ):
+			#using words
 			print( "word TRAINING design matrix found, loading pickle" )
 			with open( DESIGN_MATRIX_PATH_WORD, 'rb' ) as f:
 				designMatrix = cPickle.load( f )
@@ -113,7 +117,7 @@ def build_design_matrix( vocab_size, use_words,skip_top = 0, maxlen = None, dev_
 			        (dev_designMatrix, dev_targets))
 
 		elif not use_words and os.path.isfile( DESIGN_MATRIX_PATH_CHAR ):
-
+			#using characters
 			print( "char TRAINING design matrix found, loading pickle" )
 			with open( DESIGN_MATRIX_PATH_CHAR, 'rb' ) as f:
 				designMatrix = cPickle.load( f )
@@ -127,6 +131,8 @@ def build_design_matrix( vocab_size, use_words,skip_top = 0, maxlen = None, dev_
 			return ((designMatrix, targets),
 			        (dev_designMatrix, dev_targets))
 
+	#couldn't find any pickled data so generating it here
+
 	if verbose:
 		print( "pickled data not found, building it..." )
 
@@ -137,6 +143,7 @@ def build_design_matrix( vocab_size, use_words,skip_top = 0, maxlen = None, dev_
 	review_iterator = list( )
 
 	if testing_phase:
+		#building testing data (test set is not equal to dev set)
 		print( "building test data objects" )
 		print( "test data has no targets;\n"
 		       "so the targets vector will contain ID of review at that index" )
@@ -164,6 +171,7 @@ def build_design_matrix( vocab_size, use_words,skip_top = 0, maxlen = None, dev_
 
 
 	else:
+		#building training data
 
 		sentiment_reviews = sentiment2reviews_map( )
 
@@ -200,6 +208,7 @@ def build_design_matrix( vocab_size, use_words,skip_top = 0, maxlen = None, dev_
 	                           maxlen = MAXlen,
 	                           )
 
+	#design matrix built in parallel because why not
 	workers = multiprocessing.Pool( processes = 8 )
 	results = workers.map( func_to_one_hot,
 	                       review_iterator )
@@ -207,6 +216,7 @@ def build_design_matrix( vocab_size, use_words,skip_top = 0, maxlen = None, dev_
 	workers.join( )
 
 	if dev_split is not None:
+		#building dev set from a portion of training data
 		print( "creating dev set" )
 		random.shuffle( results )
 
@@ -217,6 +227,7 @@ def build_design_matrix( vocab_size, use_words,skip_top = 0, maxlen = None, dev_
 		dev_designMatrix = numpy.zeros( (len( dev_set ), MAXlen) )
 		dev_targets = numpy.zeros( (len( dev_set ), 1) )
 
+		#adjusting design matrix and target vector to account for dev set
 		designMatrix = numpy.resize( designMatrix, (len( results ), MAXlen) )
 		targets = numpy.resize( targets, (len( results ), 1) )
 
@@ -262,10 +273,11 @@ def build_design_matrix( vocab_size, use_words,skip_top = 0, maxlen = None, dev_
 				with open( DEV_TARGET_VECTOR_PATH_WORD, 'wb' ) as f:
 					cPickle.dump( dev_targets, f )
 		else:
+			pass
 			# TODO for some reason pickling the char design matrix uses 10+ GB of RAM
 			# the actual size of the matrix is much less
 			# so we just use the design matrix instead of pickling
-			pass
+
 		# with open( DESIGN_MATRIX_PATH_CHAR, 'wb' ) as f:
 		# 	cPickle.dump( designMatrix, f )
 		# with open( TARGET_VECTOR_PATH_CHAR, 'wb' ) as f:
@@ -277,6 +289,9 @@ def build_design_matrix( vocab_size, use_words,skip_top = 0, maxlen = None, dev_
 		# 	with open( DEV_TARGET_VECTOR_PATH_CHAR, 'wb' ) as f:
 		# 		cPickle.dump( dev_targets, f )
 
+
+
+
 	if dev_split is not None:
 		return ((designMatrix, targets), (dev_designMatrix, dev_targets))
 	else:
@@ -284,6 +299,7 @@ def build_design_matrix( vocab_size, use_words,skip_top = 0, maxlen = None, dev_
 
 
 def get_testing_data( vocab_size, use_words ):
+	# call this to generate testing data
 	return build_design_matrix( vocab_size = vocab_size,
 	                            use_words = use_words,
 	                            test_data = True )
@@ -291,6 +307,15 @@ def get_testing_data( vocab_size, use_words ):
 
 def build_siamese_input( VocabSize, useWords, skipTop = 0, devSplit = None, **kwargs ):
 	"""
+	first generates standard design matrix and target vector then builds pairs
+	 for siamese input. Effectively we take all positive reviews choose 2, all
+	 negative reviews choose 2 and all reviews choose 2. Lecunn uses permutations,
+	 but that seems redundant. Ultimately the entire space of combinations will
+	 require an on-dist batch portion because its massive; for now I am just using a
+	 subset controlled by TRAIN_CUTOFF and DEV_CUTOFF in addition to limiting the
+	 number of mixed pairs created. If just creating the pairs requires too much
+	 RAM then set TRAIN_LOW_RAM_CUTOFF at the top of the module to
+	 some x << 20,000
 
 	:param VocabSize:
 	:param useWords:
