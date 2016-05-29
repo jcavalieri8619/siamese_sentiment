@@ -273,21 +273,22 @@ def build_design_matrix( vocab_size, use_words,skip_top = 0, maxlen = None, dev_
 				with open( DEV_TARGET_VECTOR_PATH_WORD, 'wb' ) as f:
 					cPickle.dump( dev_targets, f )
 		else:
-			pass
+
 			# TODO for some reason pickling the char design matrix uses 10+ GB of RAM
 			# the actual size of the matrix is much less
 			# so we just use the design matrix instead of pickling
-		##
-		# with open( DESIGN_MATRIX_PATH_CHAR, 'wb' ) as f:
-		# 	cPickle.dump( designMatrix, f )
-		# with open( TARGET_VECTOR_PATH_CHAR, 'wb' ) as f:
-		# 	cPickle.dump( targets, f )
-		#
-		# if dev_split is not None:
-		# 	with open( DEV_DESIGN_MATRIX_PATH_CHAR, 'wb' ) as f:
-		# 		cPickle.dump( dev_designMatrix, f )
-		# 	with open( DEV_TARGET_VECTOR_PATH_CHAR, 'wb' ) as f:
-		# 		cPickle.dump( dev_targets, f )
+			##
+			# with open( DESIGN_MATRIX_PATH_CHAR, 'wb' ) as f:
+			# 	cPickle.dump( designMatrix, f )
+			# with open( TARGET_VECTOR_PATH_CHAR, 'wb' ) as f:
+			# 	cPickle.dump( targets, f )
+			#
+			# if dev_split is not None:
+			# 	with open( DEV_DESIGN_MATRIX_PATH_CHAR, 'wb' ) as f:
+			# 		cPickle.dump( dev_designMatrix, f )
+			# 	with open( DEV_TARGET_VECTOR_PATH_CHAR, 'wb' ) as f:
+			# 		cPickle.dump( dev_targets, f )
+			pass
 
 
 
