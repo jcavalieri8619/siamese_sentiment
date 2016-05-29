@@ -20,7 +20,7 @@ import modelParameters
 from convert_review import build_siamese_input
 from loss_functions import contrastiveLoss
 from siamese_activations import vectorDifference, squaredl2
-from siamese_utils import merged_outshape
+
 
 DEVSPLIT = modelParameters.devset_split
 USEWORDS = True
@@ -66,6 +66,12 @@ dense_dims1 = 100
 dense_dims2 = 0
 dense_dims3 = 0
 num_epochs = 5
+
+
+def merged_outshape( inputShapes ):
+	shape = list( inputShapes )
+	assert len( shape ) == 2, "merged_outShape: len inputShapes != 2"
+	return shape[ 0 ]
 
 
 def build_siamese_model():
