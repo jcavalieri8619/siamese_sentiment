@@ -18,7 +18,7 @@ devcomboSize= int((trainingCount*float(devset_split)/100)*float(87)/43)
 #because many weights in the model will vanish so try small positive ints
 UNK_INDEX = 0
 
-
+# TODO what is sane value for this?
 #margin used in contrastive loss function
 Margin = 1.25
 
