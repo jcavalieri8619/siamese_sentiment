@@ -1,4 +1,7 @@
-The task is sentiment classification but the goal of the project is to show that the CNN that comporises both branches of the siamese network is susceptible to adversial examples and blind spots like those described in https://arxiv.org/abs/1312.6199 while the siamese network composed of the same CNN is not.
+The task is sentiment classification but the goal of the project is to show that
+the CNN that comporises both branches of the siamese network is susceptible to adversial
+examples and blind spots like those described in https://arxiv.org/abs/1312.6199 while the
+siamese network composed of the same CNN is not.
 
 To train model, create the <train> directory inside <training_data>.
 The <train> directory should contain sub-directories <pos> and <neg>
