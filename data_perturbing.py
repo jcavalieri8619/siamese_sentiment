@@ -3,7 +3,6 @@ Created by John P Cavalieri on 5/31/16
 
 """
 
-import keras.backend as K
 import numpy as np
 
 
@@ -34,21 +33,7 @@ def identify_highprob_subset( model, X_dev, y_dev, subset_size ):
 	return (X_subset, (remaining_X, remaining_y))
 
 
-def get_network_layer_output( model, dataInput, layerNum, **kwargs ):
-	get_output = K.function( [ model.layers[ 0 ].input, K.learning_phase( ) ],
-	                         [ model.layers[ layerNum ].output ] )
 
-	phase = kwargs.get( 'phase', None )
-
-	if phase is None or phase == 'test':
-		# output in test mode = 0
-		layer_output = get_output( [ dataInput, 0 ] )[ 0 ]
-
-	elif phase == 'train':
-		# output in train mode = 1
-		layer_output = get_output( [ dataInput, 1 ] )[ 0 ]
-
-	return layer_output
 
 
 def data_SGD( trained_model, perturb_data, training_data, loss_func, batch_size = 20, **kwargs ):
