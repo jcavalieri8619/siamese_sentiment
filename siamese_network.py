@@ -83,6 +83,33 @@ def merged_outshape( inputShapes ):
 
 
 def build_siamese_model():
+	print( 'building pairs of reviews for siamese model input...' )
+
+	((trainingSets), (devSets), (devKNNsets), (testSets)) = build_siamese_input( VocabSize,
+	                                                                             useWords = USEWORDS,
+	                                                                             skipTop = skipTop,
+	                                                                             devSplit = DEVSPLIT )
+
+	# X_left and X_right are matrices with trainingSet rows and reviewLen columns
+	# y_left and y_right are the corresponding sentiment labels i.e 0:negative 1:positive
+	# similarity is 0 if X_left and X_right have same sentiment labels and 1 otherwise
+	X_left, y_left, X_right, y_right, similarity = trainingSets
+
+	# Xtest_left, ytest_left, Xtest_right, ytest_right, test_similarity = testSets
+
+	# Xdev_left and Xdev_right are matrices with devSet rows and reviewLen columns
+	Xdev_left, ydev_left, Xdev_right, ydev_right, dev_similarity = devSets
+
+	print( len( X_left ), 'train sequences length' )
+	print( len( Xdev_left ), 'dev sequences length' )
+
+	print( len( devKNNsets[ 0 ] ), 'devKNN sequences length' )
+	print( len( testSets[ 0 ] ), 'test sequences length' )
+
+	print( 'train shape:', X_left.shape )
+	print( 'dev shape:', Xdev_left.shape )
+	print( 'devKNN shape:', devKNNsets[ 0 ].shape )
+	print( 'test shape:', testSets[ 0 ].shape )
 
 
 	print( 'Build model...' )
@@ -225,19 +252,12 @@ def build_siamese_model():
 	#sgd = SGD( lr = 0.001, momentum = 0.0, decay = 0.0, nesterov = False )
 	siamese_model.compile( optimizer = 'rmsprop', loss = contrastiveLoss )
 
-	return {'siamese':siamese_model,'CNN':CNN_model}
+	return { 'siamese': siamese_model, 'CNN': CNN_model,
+	         'data'   : (trainingSets, devSets, devKNNsets, testSets) }
 
 
+def train_siamese_model( model, trainingSets, devSets ):
 
-
-
-def train_siamese_model(model):
-	print( 'building pairs of reviews for siamese model input...' )
-
-	((trainingSets), (devSets), (devKNNsets), (testSets)) = build_siamese_input( VocabSize,
-	                                                               useWords = USEWORDS,
-	                                                               skipTop = skipTop,
-	                                                               devSplit = DEVSPLIT )
 
 
 	#X_left and X_right are matrices with trainingSet rows and reviewLen columns
@@ -245,16 +265,10 @@ def train_siamese_model(model):
 	#similarity is 0 if X_left and X_right have same sentiment labels and 1 otherwise
 	X_left, y_left, X_right, y_right, similarity = trainingSets
 
-	# Xtest_left, ytest_left, Xtest_right, ytest_right, test_similarity = testSets
 
 	#Xdev_left and Xdev_right are matrices with devSet rows and reviewLen columns
 	Xdev_left, ydev_left, Xdev_right, ydev_right, dev_similarity = devSets
 
-	print( len( X_left ), 'train sequences length' )
-	print( len( Xdev_left ), 'dev sequences length' )
-
-	print( 'train shape:', X_left.shape )
-	print( 'dev shape:', Xdev_left.shape )
 
 	weightPath = './model_data/saved_weights/' + filename
 	checkpoint = ModelCheckpoint( weightPath + '_W.{epoch:02d}-{val_loss:.3f}.hdf5',
