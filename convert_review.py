@@ -342,7 +342,7 @@ def build_siamese_input( VocabSize, useWords, skipTop = 0, devSplit = None, **kw
 	#these cutoffs reduce the final training and dev set sizes
 	# after they have been created to speed up training.
 	# these paramters will not help if you are low on RAM. see top of module
-	TRAIN_CUTOFF = 35000
+	TRAIN_CUTOFF = 21500
 	DEV_CUTOFF = 3000
 
 
@@ -512,6 +512,13 @@ def build_siamese_input( VocabSize, useWords, skipTop = 0, devSplit = None, **kw
 	ydev_right = numpy.zeros( (len( Devcombo[:DEV_CUTOFF] ), 1) )
 	similarity_devlabels = numpy.zeros( (len( Devcombo[:DEV_CUTOFF] ), 1) )
 
+	XdevKnn_left = numpy.zeros( (len( Devcombo[ DEV_CUTOFF: ] ), modelParameters.MaxLen_w) )
+	XdevKnn_right = numpy.zeros( (len( Devcombo[ DEV_CUTOFF: ] ), modelParameters.MaxLen_w) )
+
+	ydevKnn_left = numpy.zeros( (len( Devcombo[ DEV_CUTOFF: ] ), 1) )
+	ydevKnn_right = numpy.zeros( (len( Devcombo[ DEV_CUTOFF: ] ), 1) )
+	similarity_devKnnlabels = numpy.zeros( (len( Devcombo[ DEV_CUTOFF: ] ), 1) )
+
 	random.shuffle( Devcombo )
 	for idx, (left, right, similar_label) in enumerate( Devcombo[:DEV_CUTOFF] ):
 		Xdev_left[ idx, : ], ydev_left[ idx, 0 ] = left
@@ -520,11 +527,19 @@ def build_siamese_input( VocabSize, useWords, skipTop = 0, devSplit = None, **kw
 
 		similarity_devlabels[ idx, 0 ] = similar_label
 
+	for idx, (left, right, similar_label) in enumerate( Devcombo[ DEV_CUTOFF: ] ):
+		XdevKnn_left[ idx, : ], ydevKnn_left[ idx, 0 ] = left
+
+		XdevKnn_right[ idx, : ], ydevKnn_right[ idx, 0 ] = right
+
+		similarity_devKnnlabels[ idx, 0 ] = similar_label
+
 	print( "finished building siamese input" )
 
 
 	return ((X_left, y_left, X_right, y_right, similarity_labels),
 	        (Xdev_left, ydev_left, Xdev_right, ydev_right, similarity_devlabels),
+	        (XdevKnn_left, ydevKnn_left, XdevKnn_right, ydevKnn_right, similarity_devKnnlabels),
 	        (Xtest_left, ytest_left, Xtest_right, ytest_right, similarity_testlabels),)
 
 

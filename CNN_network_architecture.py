@@ -3,21 +3,19 @@ Created by John P Cavalieri
 
 """
 from __future__ import print_function
-import numpy as np
 
-from keras.models import Sequential
+import datetime
+import os
+
+from keras.callbacks import ModelCheckpoint, EarlyStopping
+from keras.layers.convolutional import Convolution1D, MaxPooling1D
 from keras.layers.core import (Dense, Dropout,
                                Activation, Flatten)
 from keras.layers.embeddings import Embedding
-from keras.layers.convolutional import Convolution1D, MaxPooling1D
-from keras.callbacks import ModelCheckpoint, EarlyStopping
-import theano
-import cPickle
-from keras.regularizers import l2, l1, l1l2
-from convert_review import build_design_matrix
+from keras.models import Sequential
+
 import modelParameters
-import os
-import datetime
+from convert_review import build_design_matrix
 
 DEVSPLIT = 14
 USEWORDS = True
@@ -61,13 +59,12 @@ embedding_dims = 200
 hidden_dims = 100
 num_epochs = 5
 
-basename = "CNN_model7"
+basename = "CNN_model"
 suffix = datetime.datetime.now( ).strftime( "%y%m%d_%I%M" )
 filename = "_".join( [ basename, suffix ] )
 
 
-
-def build_CNN_model():
+def build_CNN_model( isPerturbed = False, weight_path = None ):
 
 
 	print( 'Loading data...' )
@@ -88,7 +85,8 @@ def build_CNN_model():
 
 	# we start off with an efficient embedding layer which maps
 	# our vocab indices into embedding_dims dimensions
-	model.add( Embedding( VocabSize, embedding_dims, input_length = maxReviewLen ) )
+	if not isPerturbed:
+		model.add( Embedding( VocabSize, embedding_dims, input_length = maxReviewLen ) )
 
 	model.add( Dropout( 0.10 ) )
 
@@ -98,7 +96,8 @@ def build_CNN_model():
 	                          border_mode = 'valid',
 	                          activation = 'relu',
 	                          subsample_length = stride_len1,
-	                          init = 'uniform'
+	                          init = 'uniform',
+	                          input_length = maxReviewLen
 	                          ) )
 
 	# input_length=maxReviewLen, input_dim=VocabSize
@@ -169,6 +168,8 @@ def build_CNN_model():
 	               optimizer = 'rmsprop',
 	               )
 
+	if weight_path:
+		model.load_weights( weight_path )
 
 
 

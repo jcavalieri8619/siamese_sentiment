@@ -15,11 +15,19 @@ from keras.layers.core import (Dense, Dropout,
                                Flatten)
 from keras.layers.embeddings import Embedding
 from keras.models import Model
+from keras.regularizers import l2
 
 import modelParameters
 from convert_review import build_siamese_input
 from loss_functions import contrastiveLoss
 from siamese_activations import vectorDifference, squaredl2
+
+#
+# HINT: Re-running with most Theano optimization disabled could give you a back-trace of when this node was created. This can be done with by setting the Theano flag 'optimizer=fast_compile'. If that does not work, Theano optimizations can be disabled with 'optimizer=None'.
+# HINT: Use the Theano flag 'exception_verbosity=high' for a debugprint and storage map footprint of this apply node.
+
+
+
 
 
 DEVSPLIT = modelParameters.devset_split
@@ -34,19 +42,19 @@ else:
 	maxReviewLen = modelParameters.MaxLen_c
 	skipTop = 0
 
-basename = "siamese_3_3".format( modelParameters.Margin )
+basename = "siamese_3_4".format( modelParameters.Margin )
 suffix = datetime.datetime.now( ).strftime( "%y%m%d_%I%M" )
 filename = "_".join( [ basename, suffix ] )
 
-batch_size = 80
+batch_size = 20
 
-num_filters1 = 600
-filter_length1 = 3
+num_filters1 = 800
+filter_length1 = 2
 stride_len1 = 1
 pool_len1 = 2
 
-num_filters2 = 500
-filter_length2 = 4
+num_filters2 = 600
+filter_length2 = 3
 stride_len2 = 1
 pool_len2 = 2
 
@@ -60,12 +68,12 @@ filter_length4 = 5
 stride_len4 = 1
 pool_len4 = 2
 
-embedding_dims = 200
+embedding_dims = 300
 
-dense_dims1 = 100
-dense_dims2 = 0
+dense_dims1 = 1000
+dense_dims2 = 300
 dense_dims3 = 0
-num_epochs = 5
+num_epochs = 4
 
 
 def merged_outshape( inputShapes ):
@@ -150,15 +158,21 @@ def build_siamese_model():
 
 	layer = Flatten( )( layer )
 
-	sharedDense1 = Dense( dense_dims1, activation = 'relu', )
+	# Dense layers default to 'glorot_normal' for init weights but that may not be optimal
+	# for NLP tasks
+	sharedDense1 = Dense( dense_dims1, init = 'uniform', activation = 'relu',
+	                      W_regularizer = l2( l = 0.0001 ) )
 
-	out = sharedDense1( layer )
+	layer = sharedDense1( layer )
 
 	# layer = Dropout( 0.35 )( layer )
-	#
-	# sharedDense2 = Dense( dense_dims2, activation = 'relu' )
-	#
-	# layer = sharedDense2( layer )
+
+
+
+	sharedDense2 = Dense( dense_dims2, init = 'uniform', activation = 'relu',
+	                      W_regularizer = l2( l = 0.0001 ) )
+
+	out = sharedDense2( layer )
 	#
 	# layer = Dropout( 0.35 )( layer )
 	#
@@ -197,11 +211,8 @@ def build_siamese_model():
 	merged_vector = merge( [ leftbranch, rightbranch ], mode = vectorDifference, output_shape = merged_outshape,
 	                       name = 'merged_vector' )
 
-	# mahalanobis_dist= MahalanobisDist( init = 'uniform',name = 'MahalanobisDist' )(merged_vector)
-
-
-	#then that difference vector is fed into the final fully connected layer that
-	#outputs the energy i.e. squared euclidian distance ||leftbranch-rightbranch||
+	# then that difference vector is fed into the final fully connected layer that
+	# outputs the energy i.e. squared euclidian distance ||leftbranch-rightbranch||
 	siamese_out = Dense( 1, activation = squaredl2,
 	                     name = 'energy_output' )( merged_vector )
 
@@ -223,7 +234,7 @@ def build_siamese_model():
 def train_siamese_model(model):
 	print( 'building pairs of reviews for siamese model input...' )
 
-	((trainingSets), (devSets), (testSets)) = build_siamese_input( VocabSize,
+	((trainingSets), (devSets), (devKNNsets), (testSets)) = build_siamese_input( VocabSize,
 	                                                               useWords = USEWORDS,
 	                                                               skipTop = skipTop,
 	                                                               devSplit = DEVSPLIT )
@@ -266,50 +277,57 @@ def train_siamese_model(model):
 		                                { 'energy_output': dev_similarity }),
 		                               callbacks = call_backs
 		                               )
+
+		try:
+			with open( os.path.join( './model_data/model_specs', filename + '.json' ), 'w' ) as f:
+				f.write( model[ 'siamese' ].to_json( ) )
+		except:
+			print( "error writing model json" )
+			pass
+
+		try:
+			with open( os.path.join( './model_data/model_specs', filename ) + '.hist', 'w' ) as f:
+				f.write( str( hist.history ) )
+		except:
+			print( "error writing training history" )
+			pass
+
 	except KeyboardInterrupt:
 		# hist is unitialized if here so return None in its place
-		return trainingSets, devSets, testSets, None
+		return trainingSets, devSets, devKNNsets, testSets, None
+	except:
+		raise
 
 	finally:
 
 		with open( os.path.join( './model_data/model_specs', filename ) + '.config', 'w' ) as f:
 			f.write( str( model[ 'siamese' ].get_config( ) ) )
 
-		with open( os.path.join( './model_data/model_specs', filename + '.json' ), 'w' ) as f:
-			f.write( model[ 'siamese' ].to_json( ) )
-
-		try:
-			# hist may be unitialized if here so use try
-			with open( os.path.join( './model_data/model_specs', filename ) + '.hist', 'w' ) as f:
-				f.write( str( hist.history ) )
-		except:
-			pass
-
-		with open( os.path.join( './model_data/model_specs', filename ) + '.specs' ) as f:
+		with open( os.path.join( './model_data/model_specs', filename ) + '.specs', 'w' ) as f:
 			specs = """batch_size: {}\nembedding_dims: {}\ncontrast_margin: {}\n
 			num_filters1: {}\nfilter_length1: {}\npool_len1: {}\n
 			num_filters2: {}\nfilter_length2: {}\npool_len2: {}\n
 			num_filters3: {}\nfilter_length3: {}\npool_len3: {}\n
 			num_filters4: {}\nfilter_length4: {}\npool_len4: {}\n
-			dense_dims1: {}\ndense_dims2: {}\ndense_dims3: {}""".format( batch_size,
-			                                                             embedding_dims,
-			                                                             modelParameters.Margin,
-			                                                             num_filters1,
-			                                                             filter_length1,
-			                                                             pool_len1,
-			                                                             num_filter2,
-			                                                             filter_length2,
-			                                                             pool_len2,
-			                                                             num_filters3,
-			                                                             filter_length3,
-			                                                             pool_len3,
-			                                                             num_filter4,
-			                                                             filter_length4,
-			                                                             pool_len4,
-			                                                             dense_dims1,
-			                                                             dense_dims2,
-			                                                             dense_dims3
-			                                                             )
+			dense_dims1: {}\ndense_dims2: {}\ndense_dims3: {}\n""".format( batch_size,
+			                                                               embedding_dims,
+			                                                               modelParameters.Margin,
+			                                                               num_filters1,
+			                                                               filter_length1,
+			                                                               pool_len1,
+			                                                               num_filters2,
+			                                                               filter_length2,
+			                                                               pool_len2,
+			                                                               num_filters3,
+			                                                               filter_length3,
+			                                                               pool_len3,
+			                                                               num_filters4,
+			                                                               filter_length4,
+			                                                               pool_len4,
+			                                                               dense_dims1,
+			                                                               dense_dims2,
+			                                                               dense_dims3
+			                                                               )
 			f.write( specs )
 
-	return trainingSets, devSets, testSets, hist
+	return trainingSets, devSets, devKNNsets, testSets, hist
