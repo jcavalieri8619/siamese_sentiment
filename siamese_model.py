@@ -226,8 +226,8 @@ def build_siamese_model():
 
 
 	#TODO with sentiment label info added--CNN_model is CNN_model([review,sentiment_prob])
-	rightbranch = CNN_model( [ Rreview ] )
-	leftbranch = CNN_model( [ Lreview ] )
+	rightbranch = CNN_model  # ( [ Rreview ] )
+	leftbranch = CNN_model  # ( [ Lreview ] )
 
 	#first take the difference of the final feature representations from the CNN_model
 	#represented by leftbranch and rightbranch

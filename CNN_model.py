@@ -55,8 +55,8 @@ pool_len4 = 2
 
 embedding_dims = 300
 
-dense_dims1 = 300
-dense_dims2 = 550
+dense_dims1 = 1000
+dense_dims2 = 150
 dense_dims3 = 0
 num_epochs = 4
 
@@ -80,10 +80,11 @@ def build_CNN_input(usewords=USEWORDS, skiptop=skipTop, devsplit=DEVSPLIT, verbo
 	return X_train, y_train, X_dev, y_dev, X_test, y_test
 
 
-def build_CNN_model(inputType):
+def build_CNN_model(inputType, **kwargs):
 	assert inputType in ['embeddingMatrix', '1hotVector'], "unknown input type"
 
 	if inputType == "1hotVector":
+
 		review_input = Input(shape=(maxReviewLen,), dtype='int32', name="review")
 
 		sharedEmbedding = Embedding(VocabSize + 2, embedding_dims,
@@ -158,20 +159,21 @@ def build_CNN_model(inputType):
 
 	# Dense layers default to 'glorot_normal' for init weights but that may not be optimal
 	# for NLP tasks
-	sharedDense1 = Dense(dense_dims1, init='uniform', activation='relu',
-	                     W_regularizer=l2(l=0.0001))
+	# init='uniform'
+	sharedDense1 = Dense(dense_dims1, activation='relu',
+	                     W_regularizer=l2(l=0.001))
 
 	layer = sharedDense1(layer)
 
-	# layer = Dropout( 0.35 )( layer )
+	layer = Dropout(0.35)(layer)
 
-	# sharedDense2 = Dense(dense_dims2, init='uniform', activation='relu',
-	#                      W_regularizer=l2(l=0.0001))
-	#
-	# layer = sharedDense2(layer)
+	sharedDense2 = Dense(dense_dims2, activation='relu',
+	                     W_regularizer=l2(l=0.001))
 
-	lastLayer = Dense(1, init='uniform', activation='sigmoid',
-	                  W_regularizer=l2(l=0.0001))
+	layer = sharedDense2(layer)
+
+	lastLayer = Dense(1, activation='sigmoid',
+	                  W_regularizer=l2(l=0.001))
 
 	out = lastLayer(layer)
 
@@ -190,7 +192,7 @@ def train_CNN_model(model, X_train, y_train, X_dev, y_dev):
 
 	call_backs = [checkpoint, earlyStop]
 
-	model.fit(X_train, y_train, batch_size=batch_size,
+	hist = model.fit(X_train, y_train, batch_size=batch_size,
 	          nb_epoch=num_epochs, verbose=1,
 	          validation_data=(X_dev, y_dev),
 	          callbacks=call_backs)
