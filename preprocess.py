@@ -2,11 +2,14 @@
 Created by John P Cavalieri and Santiago Paredes
 """
 from __future__ import print_function
-import os
+
 import cPickle as pickle
-from nltk.probability import FreqDist, ConditionalFreqDist
 import collections
+import os
+
 import regex
+from nltk.probability import FreqDist, ConditionalFreqDist
+
 import modelParameters
 
 ALL_REVIEWS_PATH = './model_data/all_reviews.pickle'  # default file to which to store 'all reviews' string
@@ -195,6 +198,7 @@ def generate_one_hot_maps( vocab_size,
 
 		# concat_review_strings returns dictionary keyed by 'all', 'positive'
 		# and 'negative' so we access 'all' here because we need all_reviews string
+
 		reviewstr_dict = concat_review_strings( )
 		all_reviews = reviewstr_dict['all']
 
@@ -214,22 +218,17 @@ def generate_one_hot_maps( vocab_size,
 
 		_freq_dist = FreqDist( list_normalized_all )
 
-
 		#list of words starting from most frequent
 		#may skip some very freq via skiptop
 		#[ skip_top:(vocab_size+skip_top) ]
 
-		words_by_decreasingfreq = (_freq_dist.items()[ skip_top:(vocab_size+skip_top) ])
+		words_by_decreasingfreq = (_freq_dist.most_common()[skip_top:(vocab_size + skip_top)])
 
+		print(words_by_decreasingfreq[:150])
 
-		# print(words_by_decreasingfreq[:150])
-
-		#siamesMOD shifts up the starting index of
-		#vocab incase need unique IDS
-		siamesMOD =0
 		one_hot_maps = collections.defaultdict(int)
 		for idx,(key,val) in enumerate(words_by_decreasingfreq[:vocab_size]):
-			one_hot_maps[key] = idx+modelParameters.UNK_INDEX+siamesMOD + 1
+			one_hot_maps[key] = idx + modelParameters.UNK_INDEX + 1
 
 
 

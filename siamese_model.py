@@ -10,21 +10,15 @@ import os
 from keras.callbacks import ModelCheckpoint, EarlyStopping
 from keras.engine.topology import merge
 from keras.layers import Input
-from keras.layers.convolutional import Convolution1D, MaxPooling1D
-from keras.layers.core import (Dense, Dropout,
-                               Flatten)
-from keras.layers.embeddings import Embedding
+from keras.layers.core import (Dense)
 from keras.models import Model
-from keras.regularizers import l2
 
 import modelParameters
+from CNN_model import build_CNN_model
 from convert_review import build_siamese_input
 from loss_functions import contrastiveLoss
 from siamese_activations import vectorDifference, squaredl2
 
-#
-# HINT: Re-running with most Theano optimization disabled could give you a back-trace of when this node was created. This can be done with by setting the Theano flag 'optimizer=fast_compile'. If that does not work, Theano optimizations can be disabled with 'optimizer=None'.
-# HINT: Use the Theano flag 'exception_verbosity=high' for a debugprint and storage map footprint of this apply node.
 
 
 
@@ -114,107 +108,109 @@ def build_siamese_model():
 
 	print( 'Build model...' )
 
-	review_input = Input( shape = (maxReviewLen,), dtype = 'int32', name = "review" )
-
-	# probability of positive sentiment for left input and right input;
-	# during training these are either 1 or 0 because we have that info in y_left and y_right
-	# but during testing its 0.5 indicating equal probability of positive or negative
-	#TODO currently not using but still thinking about how to use this information
-	#sentiment_prob_input = Input( shape = (1,), dtype = 'float32', name = "sentprob" )
-
-	sharedEmbedding = Embedding( VocabSize, embedding_dims,
-	                             input_length = maxReviewLen )
-
-	layer = sharedEmbedding( review_input )
-
-	sharedConv1 = Convolution1D( nb_filter = num_filters1,
-	                             filter_length = filter_length1,
-	                             border_mode = 'valid',
-	                             activation = 'relu',
-	                             subsample_length = stride_len1,
-	                             init = 'uniform' )
-
-	layer = sharedConv1( layer )
-
-	layer = Dropout( 0.25 )( layer )
-
-	layer = MaxPooling1D( pool_length = 2 )( layer )
-
-	sharedConv2 = Convolution1D( nb_filter = num_filters2,
-	                             filter_length = filter_length2,
-	                             border_mode = 'valid',
-	                             activation = 'relu',
-	                             subsample_length = stride_len2,
-	                             init = 'uniform'
-	                             )
-
-	layer = sharedConv2( layer )
-
-	layer = Dropout( 0.30 )( layer )
-
-	layer = MaxPooling1D( pool_length = 2 )( layer )
-
-	sharedConv3 = Convolution1D( nb_filter = num_filters3,
-	                             filter_length = filter_length3,
-	                             border_mode = 'valid',
-	                             activation = 'relu',
-	                             subsample_length = stride_len3,
-	                             init = 'uniform'
-	                             )
-
-	layer = sharedConv3( layer )
-
-	layer = Dropout( 0.35 )( layer )
-
-	layer = MaxPooling1D( pool_length = 2 )( layer )
-
-	sharedConv4 = Convolution1D( nb_filter = num_filters4,
-	                             filter_length = filter_length4,
-	                             border_mode = 'valid',
-	                             activation = 'relu',
-	                             subsample_length = stride_len4,
-	                             init = 'uniform',
-
-	                             )
-
-	layer = sharedConv4( layer )
-
-	layer = Dropout( 0.35 )( layer )
-
-	layer = MaxPooling1D( pool_length = 2 )( layer )
-
-	layer = Flatten( )( layer )
-
-	# Dense layers default to 'glorot_normal' for init weights but that may not be optimal
-	# for NLP tasks
-	sharedDense1 = Dense( dense_dims1, init = 'uniform', activation = 'relu',
-	                      W_regularizer = l2( l = 0.0001 ) )
-
-	layer = sharedDense1( layer )
-
-	# layer = Dropout( 0.35 )( layer )
-
-
-
-	sharedDense2 = Dense( dense_dims2, init = 'uniform', activation = 'relu',
-	                      W_regularizer = l2( l = 0.0001 ) )
-
-	out = sharedDense2( layer )
+	# review_input = Input( shape = (maxReviewLen,), dtype = 'int32', name = "review" )
+	#
+	# # probability of positive sentiment for left input and right input;
+	# # during training these are either 1 or 0 because we have that info in y_left and y_right
+	# # but during testing its 0.5 indicating equal probability of positive or negative
+	# #TODO currently not using but still thinking about how to use this information
+	# #sentiment_prob_input = Input( shape = (1,), dtype = 'float32', name = "sentprob" )
+	#
+	# sharedEmbedding = Embedding( VocabSize, embedding_dims,
+	#                              input_length = maxReviewLen )
+	#
+	# layer = sharedEmbedding( review_input )
+	#
+	# sharedConv1 = Convolution1D( nb_filter = num_filters1,
+	#                              filter_length = filter_length1,
+	#                              border_mode = 'valid',
+	#                              activation = 'relu',
+	#                              subsample_length = stride_len1,
+	#                              init = 'uniform' )
+	#
+	# layer = sharedConv1( layer )
+	#
+	# layer = Dropout( 0.25 )( layer )
+	#
+	# layer = MaxPooling1D( pool_length = 2 )( layer )
+	#
+	# sharedConv2 = Convolution1D( nb_filter = num_filters2,
+	#                              filter_length = filter_length2,
+	#                              border_mode = 'valid',
+	#                              activation = 'relu',
+	#                              subsample_length = stride_len2,
+	#                              init = 'uniform'
+	#                              )
+	#
+	# layer = sharedConv2( layer )
+	#
+	# layer = Dropout( 0.30 )( layer )
+	#
+	# layer = MaxPooling1D( pool_length = 2 )( layer )
+	#
+	# sharedConv3 = Convolution1D( nb_filter = num_filters3,
+	#                              filter_length = filter_length3,
+	#                              border_mode = 'valid',
+	#                              activation = 'relu',
+	#                              subsample_length = stride_len3,
+	#                              init = 'uniform'
+	#                              )
+	#
+	# layer = sharedConv3( layer )
 	#
 	# layer = Dropout( 0.35 )( layer )
 	#
-	# sharedDense3 = Dense( dense_dims3, activation = 'relu' )
+	# layer = MaxPooling1D( pool_length = 2 )( layer )
 	#
-	# out = sharedDense3( layer )
+	# sharedConv4 = Convolution1D( nb_filter = num_filters4,
+	#                              filter_length = filter_length4,
+	#                              border_mode = 'valid',
+	#                              activation = 'relu',
+	#                              subsample_length = stride_len4,
+	#                              init = 'uniform',
+	#
+	#                              )
+	#
+	# layer = sharedConv4( layer )
+	#
+	# layer = Dropout( 0.35 )( layer )
+	#
+	# layer = MaxPooling1D( pool_length = 2 )( layer )
+	#
+	# layer = Flatten( )( layer )
+	#
+	# # Dense layers default to 'glorot_normal' for init weights but that may not be optimal
+	# # for NLP tasks
+	# sharedDense1 = Dense( dense_dims1, init = 'uniform', activation = 'relu',
+	#                       W_regularizer = l2( l = 0.0001 ) )
+	#
+	# layer = sharedDense1( layer )
+	#
+	# # layer = Dropout( 0.35 )( layer )
+	#
+	#
+	#
+	# sharedDense2 = Dense( dense_dims2, init = 'uniform', activation = 'relu',
+	#                       W_regularizer = l2( l = 0.0001 ) )
+	#
+	# out = sharedDense2( layer )
+	# #
+	# # layer = Dropout( 0.35 )( layer )
+	# #
+	# # sharedDense3 = Dense( dense_dims3, activation = 'relu' )
+	# #
+	# # out = sharedDense3( layer )
+	#
+	# # TODO removed sentiment label info for now
+	# #sentiment label is concatenated onto output vector of the prior fully connected layer
+	# #out = merge( [ layer, sentiment_prob_input ], mode = 'concat',concat_axis = 1, name = "cnn_output" )
+	#
+	#
+	# #TODO with sentiment label info added--model inputs are [review_input,sentiment_prob_input]
+	#
+	# CNN_model = Model( input = [ review_input ], output = out, name = "CNN_model" )
 
-	# TODO removed sentiment label info for now
-	#sentiment label is concatenated onto output vector of the prior fully connected layer
-	#out = merge( [ layer, sentiment_prob_input ], mode = 'concat',concat_axis = 1, name = "cnn_output" )
-
-
-	#TODO with sentiment label info added--model inputs are [review_input,sentiment_prob_input]
-
-	CNN_model = Model( input = [ review_input ], output = out, name = "CNN_model" )
+	CNN_model = build_CNN_model('1hotVector')
 
 
 	Lreview = Input( shape = (maxReviewLen,), dtype = 'int32', name = "Lreview" )
@@ -308,7 +304,7 @@ def train_siamese_model( model, trainingSets, devSets ):
 
 	except KeyboardInterrupt:
 		# hist is unitialized if here so return None in its place
-		return trainingSets, devSets, devKNNsets, testSets, None
+		return trainingSets, devSets, None
 	except:
 		raise
 
@@ -344,4 +340,4 @@ def train_siamese_model( model, trainingSets, devSets ):
 			                                                               )
 			f.write( specs )
 
-	return trainingSets, devSets, devKNNsets, testSets, hist
+	return trainingSets, devSets, hist
