@@ -23,7 +23,7 @@ also be saved after training is complete.
 
 EXAMPLE:
 
-from siamese_network import build_siamese_model, train_siamese_model
+from siamese_model import build_siamese_model, train_siamese_model
 
 
 #this call returns a dictionary containing the siamese model
