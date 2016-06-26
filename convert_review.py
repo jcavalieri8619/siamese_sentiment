@@ -285,7 +285,7 @@ def build_design_matrix(vocab_size, use_words,
 			return ((designMatrix, targets), (dev_designMatrix[500:], dev_targets[500:]),
 			        (dev_designMatrix[:500], dev_targets[:500]))
 		else:
-
+			# using dev set but no test set
 			return ((designMatrix, targets), (dev_designMatrix, dev_targets))
 
 	else:

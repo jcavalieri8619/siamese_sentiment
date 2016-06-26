@@ -10,8 +10,8 @@ testingCount=11000
 devset_split =14
 
 #size of training and dev combination subsets of pos,neg,mixed reviews for siamese input
-# trainingComboSize = int((trainingCount*(1-float(devset_split)/100))*float(87)/43)
-# devcomboSize= int((trainingCount*float(devset_split)/100)*float(87)/43)
+trainingComboSize = int((trainingCount * (1 - float(devset_split) / 100)) * float(87) / 43)
+devcomboSize = int((trainingCount * float(devset_split) / 100) * float(87) / 43)
 
 
 #index for words that our out-of-vocab; using 0 may not be the best option

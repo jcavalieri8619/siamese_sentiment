@@ -62,6 +62,14 @@ num_epochs = 4
 
 
 def build_CNN_input(usewords=USEWORDS, skiptop=skipTop, devsplit=DEVSPLIT, verbose=True):
+	"""
+
+	:param usewords:
+	:param skiptop:
+	:param devsplit:
+	:param verbose:
+	:return:
+	"""
 	print('Building input')
 	((X_train, y_train), (X_dev, y_dev), (X_test, y_test)) = build_design_matrix(VocabSize,
 	                                                                             use_words=usewords,
@@ -80,7 +88,13 @@ def build_CNN_input(usewords=USEWORDS, skiptop=skipTop, devsplit=DEVSPLIT, verbo
 	return X_train, y_train, X_dev, y_dev, X_test, y_test
 
 
-def build_CNN_model(inputType, **kwargs):
+def build_CNN_model(inputType, isIntermediate=False, **kwargs):
+	"""
+
+	:param inputType:
+	:param kwargs:
+	:return:
+	"""
 	assert inputType in ['embeddingMatrix', '1hotVector'], "unknown input type"
 
 	if inputType == "1hotVector":
@@ -170,18 +184,24 @@ def build_CNN_model(inputType, **kwargs):
 	sharedDense2 = Dense(dense_dims2, activation='relu',
 	                     W_regularizer=l2(l=0.001))
 
-	layer = sharedDense2(layer)
+	out_A = sharedDense2(layer)
 
-	lastLayer = Dense(1, activation='sigmoid',
-	                  W_regularizer=l2(l=0.001))
+	if isIntermediate:
+		CNN_model = Model(input=[review_input], output=out_A, name="CNN_model")
+		return CNN_model
 
-	out = lastLayer(layer)
+	else:
 
-	CNN_model = Model(input=[review_input], output=out, name="CNN_model")
+		lastLayer = Dense(1, activation='sigmoid',
+		                  W_regularizer=l2(l=0.001))
 
-	CNN_model.compile(optimizer='rmsprop', loss='binary_crossentropy')
+		out_B = lastLayer(out_A)
 
-	return CNN_model
+		CNN_model = Model(input=[review_input], output=out_B, name="CNN_model")
+
+		CNN_model.compile(optimizer='rmsprop', loss='binary_crossentropy')
+
+		return CNN_model
 
 
 def train_CNN_model(model, X_train, y_train, X_dev, y_dev):

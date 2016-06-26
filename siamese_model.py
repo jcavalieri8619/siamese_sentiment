@@ -71,146 +71,55 @@ num_epochs = 4
 
 
 def merged_outshape( inputShapes ):
+	"""
+
+	:param inputShapes:
+	:return:
+	"""
 	shape = list( inputShapes )
 	assert len( shape ) == 2, "merged_outShape: len inputShapes != 2"
 	return shape[ 0 ]
 
 
+def build_siamese_input(verbose=True):
+	"""
+
+	:param verbose:
+	:return:
+	"""
+
+	if verbose:
+		print('building pairs of reviews for siamese model input')
+
+	((trainingSets), (devSets), (devKNNsets), (testSets)) = build_siamese_input(VocabSize,
+	                                                                            useWords=USEWORDS,
+	                                                                            skipTop=skipTop,
+	                                                                            devSplit=DEVSPLIT)
+
+	if verbose:
+		print(len(trainingSets[0]), 'train sequences length')
+		print(len(devSets[0]), 'dev sequences length')
+
+		print(len(devKNNsets[0]), 'devKNN sequences length')
+		print(len(testSets[0]), 'test sequences length')
+
+		print('train shape:', trainingSets[0].shape)
+		print('dev shape:', devSets[0].shape)
+		print('devKNN shape:', devKNNsets[0].shape)
+		print('test shape:', testSets[0].shape)
+
+	return {'training': trainingSets, 'dev': devSets, 'KNN': devKNNsets, 'test': testSets}
+
+
 def build_siamese_model():
-	print( 'building pairs of reviews for siamese model input...' )
+	"""
 
-	((trainingSets), (devSets), (devKNNsets), (testSets)) = build_siamese_input( VocabSize,
-	                                                                             useWords = USEWORDS,
-	                                                                             skipTop = skipTop,
-	                                                                             devSplit = DEVSPLIT )
+	:return:
+	"""
 
-	# X_left and X_right are matrices with trainingSet rows and reviewLen columns
-	# y_left and y_right are the corresponding sentiment labels i.e 0:negative 1:positive
-	# similarity is 0 if X_left and X_right have same sentiment labels and 1 otherwise
-	X_left, y_left, X_right, y_right, similarity = trainingSets
+	print('Building model')
 
-	# Xtest_left, ytest_left, Xtest_right, ytest_right, test_similarity = testSets
-
-	# Xdev_left and Xdev_right are matrices with devSet rows and reviewLen columns
-	Xdev_left, ydev_left, Xdev_right, ydev_right, dev_similarity = devSets
-
-	print( len( X_left ), 'train sequences length' )
-	print( len( Xdev_left ), 'dev sequences length' )
-
-	print( len( devKNNsets[ 0 ] ), 'devKNN sequences length' )
-	print( len( testSets[ 0 ] ), 'test sequences length' )
-
-	print( 'train shape:', X_left.shape )
-	print( 'dev shape:', Xdev_left.shape )
-	print( 'devKNN shape:', devKNNsets[ 0 ].shape )
-	print( 'test shape:', testSets[ 0 ].shape )
-
-
-	print( 'Build model...' )
-
-	# review_input = Input( shape = (maxReviewLen,), dtype = 'int32', name = "review" )
-	#
-	# # probability of positive sentiment for left input and right input;
-	# # during training these are either 1 or 0 because we have that info in y_left and y_right
-	# # but during testing its 0.5 indicating equal probability of positive or negative
-	# #TODO currently not using but still thinking about how to use this information
-	# #sentiment_prob_input = Input( shape = (1,), dtype = 'float32', name = "sentprob" )
-	#
-	# sharedEmbedding = Embedding( VocabSize, embedding_dims,
-	#                              input_length = maxReviewLen )
-	#
-	# layer = sharedEmbedding( review_input )
-	#
-	# sharedConv1 = Convolution1D( nb_filter = num_filters1,
-	#                              filter_length = filter_length1,
-	#                              border_mode = 'valid',
-	#                              activation = 'relu',
-	#                              subsample_length = stride_len1,
-	#                              init = 'uniform' )
-	#
-	# layer = sharedConv1( layer )
-	#
-	# layer = Dropout( 0.25 )( layer )
-	#
-	# layer = MaxPooling1D( pool_length = 2 )( layer )
-	#
-	# sharedConv2 = Convolution1D( nb_filter = num_filters2,
-	#                              filter_length = filter_length2,
-	#                              border_mode = 'valid',
-	#                              activation = 'relu',
-	#                              subsample_length = stride_len2,
-	#                              init = 'uniform'
-	#                              )
-	#
-	# layer = sharedConv2( layer )
-	#
-	# layer = Dropout( 0.30 )( layer )
-	#
-	# layer = MaxPooling1D( pool_length = 2 )( layer )
-	#
-	# sharedConv3 = Convolution1D( nb_filter = num_filters3,
-	#                              filter_length = filter_length3,
-	#                              border_mode = 'valid',
-	#                              activation = 'relu',
-	#                              subsample_length = stride_len3,
-	#                              init = 'uniform'
-	#                              )
-	#
-	# layer = sharedConv3( layer )
-	#
-	# layer = Dropout( 0.35 )( layer )
-	#
-	# layer = MaxPooling1D( pool_length = 2 )( layer )
-	#
-	# sharedConv4 = Convolution1D( nb_filter = num_filters4,
-	#                              filter_length = filter_length4,
-	#                              border_mode = 'valid',
-	#                              activation = 'relu',
-	#                              subsample_length = stride_len4,
-	#                              init = 'uniform',
-	#
-	#                              )
-	#
-	# layer = sharedConv4( layer )
-	#
-	# layer = Dropout( 0.35 )( layer )
-	#
-	# layer = MaxPooling1D( pool_length = 2 )( layer )
-	#
-	# layer = Flatten( )( layer )
-	#
-	# # Dense layers default to 'glorot_normal' for init weights but that may not be optimal
-	# # for NLP tasks
-	# sharedDense1 = Dense( dense_dims1, init = 'uniform', activation = 'relu',
-	#                       W_regularizer = l2( l = 0.0001 ) )
-	#
-	# layer = sharedDense1( layer )
-	#
-	# # layer = Dropout( 0.35 )( layer )
-	#
-	#
-	#
-	# sharedDense2 = Dense( dense_dims2, init = 'uniform', activation = 'relu',
-	#                       W_regularizer = l2( l = 0.0001 ) )
-	#
-	# out = sharedDense2( layer )
-	# #
-	# # layer = Dropout( 0.35 )( layer )
-	# #
-	# # sharedDense3 = Dense( dense_dims3, activation = 'relu' )
-	# #
-	# # out = sharedDense3( layer )
-	#
-	# # TODO removed sentiment label info for now
-	# #sentiment label is concatenated onto output vector of the prior fully connected layer
-	# #out = merge( [ layer, sentiment_prob_input ], mode = 'concat',concat_axis = 1, name = "cnn_output" )
-	#
-	#
-	# #TODO with sentiment label info added--model inputs are [review_input,sentiment_prob_input]
-	#
-	# CNN_model = Model( input = [ review_input ], output = out, name = "CNN_model" )
-
-	CNN_model = build_CNN_model('1hotVector')
+	CNN_model = build_CNN_model(inputType='1hotVector', isIntermediate=True)
 
 
 	Lreview = Input( shape = (maxReviewLen,), dtype = 'int32', name = "Lreview" )
@@ -219,15 +128,14 @@ def build_siamese_model():
 
 	#TODO removed sentiment label info for now
 	#Lsentiment_prob = Input( shape = (1,), dtype = 'float32', name = "Lsentprob" )
-	#TODO removed sentiment label info for now
 	#Rsentiment_prob = Input( shape = (1,), dtype = 'float32', name = "Rsentprob" )
 
 
 
 
 	#TODO with sentiment label info added--CNN_model is CNN_model([review,sentiment_prob])
-	rightbranch = CNN_model  # ( [ Rreview ] )
-	leftbranch = CNN_model  # ( [ Lreview ] )
+	rightbranch = CNN_model([Rreview])
+	leftbranch = CNN_model([Lreview])
 
 	#first take the difference of the final feature representations from the CNN_model
 	#represented by leftbranch and rightbranch
@@ -248,11 +156,17 @@ def build_siamese_model():
 	#sgd = SGD( lr = 0.001, momentum = 0.0, decay = 0.0, nesterov = False )
 	siamese_model.compile( optimizer = 'rmsprop', loss = contrastiveLoss )
 
-	return { 'siamese': siamese_model, 'CNN': CNN_model,
-	         'data'   : (trainingSets, devSets, devKNNsets, testSets) }
+	return {'siamese': siamese_model, 'CNN': CNN_model}
 
 
 def train_siamese_model( model, trainingSets, devSets ):
+	"""
+
+	:param model:
+	:param trainingSets:
+	:param devSets:
+	:return:
+	"""
 
 
 
@@ -261,14 +175,13 @@ def train_siamese_model( model, trainingSets, devSets ):
 	#similarity is 0 if X_left and X_right have same sentiment labels and 1 otherwise
 	X_left, y_left, X_right, y_right, similarity = trainingSets
 
-
-	#Xdev_left and Xdev_right are matrices with devSet rows and reviewLen columns
 	Xdev_left, ydev_left, Xdev_right, ydev_right, dev_similarity = devSets
 
 
 	weightPath = './model_data/saved_weights/' + filename
-	checkpoint = ModelCheckpoint( weightPath + '_W.{epoch:02d}-{val_loss:.3f}.hdf5',
-	                              verbose = 1, )
+
+	checkpoint = ModelCheckpoint(weightPath + '_W.{epoch:02d}-{val_loss:.3f}.hdf5', verbose=1, )
+
 	earlyStop = EarlyStopping( patience = 1, verbose = 1 )
 
 	call_backs = [ checkpoint, earlyStop ]
@@ -277,16 +190,15 @@ def train_siamese_model( model, trainingSets, devSets ):
 	#{'Lsentprob': y_left, 'Rsentprob': y_right} and same for validation data inputs
 
 	try:
-		hist = model[ 'siamese' ].fit( { 'Lreview': X_left, 'Rreview': X_right, },
-		                               { 'energy_output': similarity },
-		                               batch_size = batch_size,
-		                               nb_epoch = num_epochs,
-		                               verbose = 1,
-		                               validation_data =
+		hist = model[ 'siamese' ].fit({ 'Lreview': X_left, 'Rreview': X_right, },
+		                              { 'energy_output': similarity },
+		                              batch_size = batch_size,
+		                              nb_epoch = num_epochs,
+		                              verbose = 1,
+		                              validation_data =
 		                               ({ 'Lreview': Xdev_left, 'Rreview': Xdev_right, },
 		                                { 'energy_output': dev_similarity }),
-		                               callbacks = call_backs
-		                               )
+		                              callbacks=call_backs)
 
 		try:
 			with open( os.path.join( './model_data/model_specs', filename + '.json' ), 'w' ) as f:
@@ -303,8 +215,7 @@ def train_siamese_model( model, trainingSets, devSets ):
 			pass
 
 	except KeyboardInterrupt:
-		# hist is unitialized if here so return None in its place
-		return trainingSets, devSets, None
+		return trainingSets, devSets
 	except:
 		raise
 
