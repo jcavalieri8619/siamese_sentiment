@@ -15,7 +15,7 @@ from keras.models import Model
 
 import modelParameters
 from CNN_model import build_CNN_model
-from convert_review import build_siamese_input
+from convert_review import construct_review_pairs
 from loss_functions import contrastiveLoss
 from siamese_activations import vectorDifference, squaredl2
 
@@ -91,10 +91,10 @@ def build_siamese_input(verbose=True):
 	if verbose:
 		print('building pairs of reviews for siamese model input')
 
-	((trainingSets), (devSets), (devKNNsets), (testSets)) = build_siamese_input(VocabSize,
-	                                                                            useWords=USEWORDS,
-	                                                                            skipTop=skipTop,
-	                                                                            devSplit=DEVSPLIT)
+	((trainingSets), (devSets), (devKNNsets), (testSets)) = construct_review_pairs(VocabSize,
+	                                                                               useWords=USEWORDS,
+	                                                                               skipTop=skipTop,
+	                                                                               devSplit=DEVSPLIT)
 
 	if verbose:
 		print(len(trainingSets[0]), 'train sequences length')

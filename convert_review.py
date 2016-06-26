@@ -306,7 +306,7 @@ def get_testing_data(vocab_size, use_words):
 	                           test_data=True)
 
 
-def build_siamese_input(VocabSize, useWords, skipTop=0, devSplit=None, **kwargs):
+def construct_review_pairs(VocabSize, useWords, skipTop=0, devSplit=None, **kwargs):
 	"""
 	first generates standard design matrix and target vector then builds pairs
 	 for siamese input. Effectively we take all positive reviews choose 2, all
