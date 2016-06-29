@@ -29,126 +29,135 @@ from network_utils import get_network_layer_output
 
 
 def get_embedding_matrices(model, X):
-	return get_network_layer_output(model, X, 0)
+    return get_network_layer_output(model, X, 0)
 
 
 def identify_highprob_subset(model, X, y, subset_size):
-	"""
+    """
 
-	:param model: trained CNN model with inputType 1hotVectors
-	:param X: design matrix
-	:param y: targets vector
-	:param subset_size: size of high probability subset to perturb
-	:return:
-	"""
-	probs = model.predict_proba(X)
+    :param model: trained CNN model with inputType 1hotVectors
+    :param X: design matrix
+    :param y: targets vector
+    :param subset_size: size of high probability subset to perturb
+    :return:
+    """
+    probs = model.predict_proba(X)
 
-	indices = np.arange(start=0, stop=len(X), dtype='int32').reshape((-1, 1))
+    indices = np.arange(start=0, stop=len(X), dtype='int32').reshape((-1, 1))
 
-	prob_vs_index = np.concatenate((probs.reshape((-1, 1)), indices), axis=1)
+    prob_vs_index = np.concatenate((probs.reshape((-1, 1)), indices), axis=1)
 
-	posTargets = y.reshape((-1,))
+    posTargets = y.reshape((-1,))
 
-	posExamples = prob_vs_index[posTargets == 1, :]
-	posExamples.sort(axis=0)
+    posExamples = prob_vs_index[posTargets == 1, :]
+    posExamples.sort(axis=0)
 
-	highProb_indices = posExamples[:, 1]
+    highProb_indices = posExamples[:, 1]
 
-	X_subset = X[highProb_indices[-1:-subset_size:-1], :, :]
+    X_subset = X[highProb_indices[-1:-subset_size:-1], :, :]
 
-	remaining_X = X[highProb_indices[-subset_size:0:-1], :, :]
-	remaining_y = y[highProb_indices[-subset_size:0:-1], :]
+    remaining_X = X[highProb_indices[-subset_size:0:-1], :, :]
+    remaining_y = y[highProb_indices[-subset_size:0:-1], :]
 
-	return (X_subset, (remaining_X, remaining_y))
+    return (X_subset, (remaining_X, remaining_y))
 
 
-def data_SGD(trained_model, highProb_subset, loss_func, batch_size=20,
+def data_SGD(trained_model, highProb_subset, loss_func, num_epochs, batch_size=20,
              **kwargs):
-	"""
-	get embeddings for highProb_subset and use trained model without embedding layer
+    """
+    get embeddings for highProb_subset and use trained model without embedding layer
 
-	:param trained_model: trained CNN model with inputType embeddingMatrix
-	:param highProb_subset: design matrix consisting of examples predicted correctly with high probability
-	:param loss_func:
-	:param batch_size:
-	:param num_epochs:
-	:param kwargs:
-	:return:
-	"""
+    :param trained_model: trained CNN model with inputType embeddingMatrix
+    :param highProb_subset: design matrix consisting of examples predicted correctly with high probability
+    :param loss_func:
+    :param batch_size:
+    :param num_epochs:
+    :param kwargs:
+    :return:
+    """
 
-	targets = np.ones((highProb_subset.shape[0], 1))
-	designMatrix = copy.deepcopy(highProb_subset)
+    targets = np.ones((highProb_subset.shape[0], 1))
+    designMatrix = copy.deepcopy(highProb_subset)
 
-	beta = 0.01
-	alpha = 0.01
+    beta = 0.01
+    alpha_X = 0.01
+    alpha_L = 0.01
 
-	X = theano.shared(designMatrix, name='X_designMatrix')
-	lagrange_mult = theano.shared(0., name="lagrange_mult")
-	y = T.ivector(name='y_targetvect')
+    batched_inputs = list()
+    lagrange_mult = theano.shared(0., name="lagrange_mult")
+    y = T.ivector(name='y_targetvect')
 
-	# trained model output is the probability that input is in positive class
-	posClass_probability = trained_model.output
-	# predictions are thresholded at 0.5
-	prediction = posClass_probability > 0.5
+    # trained model output is the probability that input is in positive class
+    posClass_probability = trained_model.output
+    # predictions are thresholded at 0.5
+    prediction = posClass_probability > 0.5
 
-	for batch_itr in range((len(highProb_subset) / batch_size) + 1):
-		matrixDiff = (X[batch_itr * batch_size:(batch_itr + 1) * batch_size, :, :] -
-		              highProb_subset[batch_itr * batch_size:(batch_itr + 1) * batch_size, :, :])
+    for epoch in num_epochs:
 
-		constrained_inverse_loss = (-1 * binary_crossentropy(trained_model.targets[0], posClass_probability) +
-		                            beta * lagrange_mult * T.dot(matrixDiff, matrixDiff))
+        for i, batch_itr in enumerate(range((len(highProb_subset) / batch_size) + 1)):
 
-		total_cost = constrained_inverse_loss.mean()
+            batched_inputs.append(theano.shared(designMatrix[batch_itr * batch_size:(batch_itr + 1) * batch_size, :, :],
+                                                name='X_designMatrix'))
 
-		num_gradients = len(trained_model.layers)
+            matrixDiff = (
+            batched_inputs[i] - highProb_subset[batch_itr * batch_size:(batch_itr + 1) * batch_size, :, :])
 
-		Dcost_Dlagrange = T.grad(cost=total_cost, wrt=[lagrange_mult])
-		D_layers = list()
+            constrained_inverse_loss = (-1 * binary_crossentropy(trained_model.targets[0], posClass_probability) +
+                                        beta * lagrange_mult * T.dot(matrixDiff, matrixDiff))
 
-		D_layers.append(T.grad(cost=total_cost, wrt=[trained_model.layers[num_gradients - 1].input]))
+            total_cost = constrained_inverse_loss.mean()
 
-		for itr in range(num_gradients - 1, 0, -1):
-			out = trained_model.layers[itr].output
+            num_gradients = len(trained_model.layers)
 
-			if out.ndim == 0:
-				element = theano.gradient.jacobian(out, wrt=[trained_model.layers[itr - 1].input])
+            Dcost_Dlagrange = T.grad(cost=total_cost, wrt=[lagrange_mult])
+            DlayerOut_DlayerIn = list()
 
-			elif out.ndim == 1:
-				element = theano.gradient.jacobian(out, wrt=[trained_model.layers[itr - 1].input])
+            DlayerOut_DlayerIn.append(T.grad(cost=total_cost, wrt=[trained_model.layers[num_gradients - 1].input]))
 
-			elif out.ndim == 2:
-				element = theano.gradient.jacobian(
-					T.sum(out, axis=1, dtype='float32', keepdims=True, acc_dtype='float32'),
-					wrt=[trained_model.layers[itr - 1].input])
-			elif out.ndim == 3:
-				element = theano.gradient.jacobian(
-					T.sum(out, axis=2, dtype='float32', keepdims=True, acc_dtype='float32'),
-					wrt=[trained_model.layers[itr - 1].input])
-			# element = theano.gradient.jacobian(T.sum(T.sum(out, axis=0,dtype='float32',keepdims=True,acc_dtype='float32'),
-			#                                          1,'float32',True,'float32'),
-			#                                    wrt=[trained_model.layers[itr - 1].input])
-			else:
-				raise RuntimeError("cannot handle ndim > 3")
+            for itr in range(num_gradients - 1, 0, -1):
+                out = trained_model.layers[itr].output
 
-			D_layers.append(element)
+                if out.ndim == 0:
+                    element = theano.gradient.jacobian(out, wrt=[trained_model.layers[itr - 1].input])
 
-		Dcost_DX = reduce(operator.mul, D_layers, 1)
+                elif out.ndim == 1:
+                    element = theano.gradient.jacobian(out, wrt=[trained_model.layers[itr - 1].input])
 
-		Train = theano.function(
-			inputs=[X, y],
-			outputs=[prediction, constrained_inverse_loss],
-			updates=((),),
-			name="SGD_data")
+                elif out.ndim == 2:
+                    element = theano.gradient.jacobian(
+                            T.sum(out, axis=1, dtype='float32', keepdims=True, acc_dtype='float32'),
+                            wrt=[trained_model.layers[itr - 1].input])
+                elif out.ndim == 3:
+                    element = theano.gradient.jacobian(
+                            T.sum(out, axis=2, dtype='float32', keepdims=True, acc_dtype='float32'),
+                            wrt=[trained_model.layers[itr - 1].input])
+                    # element = theano.gradient.jacobian(T.sum(T.sum(out, axis=0,dtype='float32',
+                    #                                          keepdims=True,acc_dtype='float32'),
+                    #                                          1,'float32',True,'float32'),
+                    #                                    wrt=[trained_model.layers[itr - 1].input])
+                else:
+                    raise RuntimeError("data_SGD: cannot handle ndim > 3")
 
-	#
-	# for batch_itr in range((len(highProb_subset) / (batch_size)) + 1):
-	#
-	# 	pred, total_cost = train([X[batch_itr * batch_size:(batch_itr + 1) * batch_size, :, :],
-	# 	                    targets[batch_itr * batch_size:(batch_itr + 1) * batch_size, :, :]])
-	#
-	# 	for p, c in zip(pred, total_cost):
-	# 		print(str((p, c)) + '\n')
+                DlayerOut_DlayerIn.append(element)
+
+            Dcost_DX = reduce(operator.mul, DlayerOut_DlayerIn, 1.0)
+
+            SGDtrain = theano.function(
+                    inputs=[trained_model.input, trained_model.targets[0]],
+                    outputs=[prediction, constrained_inverse_loss],
+                    updates=((batched_inputs[i], batched_inputs[i] - alpha_X * Dcost_DX),
+                             (lagrange_mult, lagrange_mult - alpha_L * Dcost_Dlagrange)),
+                    name="SGDtrain")
+
+            #
+            # for batch_itr in range((len(highProb_subset) / (batch_size)) + 1):
+            #
+            # 	pred, total_cost = train([X[batch_itr * batch_size:(batch_itr + 1) * batch_size, :, :],
+            # 	                    targets[batch_itr * batch_size:(batch_itr + 1) * batch_size, :, :]])
+            #
+            # 	for p, c in zip(pred, total_cost):
+            # 		print(str((p, c)) + '\n')
 
 
 def dataSGD_test():
-	pass
+    pass

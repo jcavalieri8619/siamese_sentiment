@@ -19,13 +19,13 @@ DEVSPLIT = modelParameters.devset_split
 USEWORDS = True
 
 if USEWORDS:
-	VocabSize = modelParameters.VocabSize_w
-	maxReviewLen = modelParameters.MaxLen_w
-	skipTop = modelParameters.skip_top
+    VocabSize = modelParameters.VocabSize_w
+    maxReviewLen = modelParameters.MaxLen_w
+    skipTop = modelParameters.skip_top
 else:
-	VocabSize = modelParameters.VocabSize_c
-	maxReviewLen = modelParameters.MaxLen_c
-	skipTop = 0
+    VocabSize = modelParameters.VocabSize_c
+    maxReviewLen = modelParameters.MaxLen_c
+    skipTop = 0
 
 basename = "siamese_3_4".format(modelParameters.Margin)
 suffix = datetime.datetime.now().strftime("%y%m%d_%I%M")
@@ -62,167 +62,170 @@ num_epochs = 4
 
 
 def build_CNN_input(usewords=USEWORDS, skiptop=skipTop, devsplit=DEVSPLIT, verbose=True, **kwargs):
-	"""
+    """
 
-	:param usewords:
-	:param skiptop:
-	:param devsplit:
-	:param verbose:
-	:return:
-	"""
-	print('Building input')
-	((X_train, y_train), (X_dev, y_dev), (X_test, y_test)) = build_design_matrix(VocabSize,
-	                                                                             use_words=usewords,
-	                                                                             skip_top=skiptop,
-	                                                                             dev_split=devsplit,
-	                                                                             **kwargs)
-	if verbose:
-		print(len(X_train), 'train sequences')
+    :param usewords:
+    :param skiptop:
+    :param devsplit:
+    :param verbose:
+    :return:
+    """
+    print('Building input')
+    ((X_train, y_train), (X_dev, y_dev), (X_test, y_test)) = build_design_matrix(VocabSize,
+                                                                                 use_words=usewords,
+                                                                                 skip_top=skiptop,
+                                                                                 dev_split=devsplit,
+                                                                                 **kwargs)
+    if verbose:
+        print(len(X_train), 'train sequences')
 
-		print('X_train shape:', X_train.shape)
-		print('X_dev shape:', X_dev.shape)
+        print('X_train shape:', X_train.shape)
+        print('X_dev shape:', X_dev.shape)
 
-		print('y_train shape:', y_train.shape)
-		print('y_dev shape:', y_dev.shape)
+        print('y_train shape:', y_train.shape)
+        print('y_dev shape:', y_dev.shape)
 
-	return X_train, y_train, X_dev, y_dev, X_test, y_test
-
-
-def build_CNN_model(inputType, isIntermediate=False, **kwargs):
-	"""
-
-	:param inputType:
-	:param isIntermediate:
-	:param kwargs:
-	:return:
-	"""
-	assert inputType in ['embeddingMatrix', '1hotVector'], "unknown input type"
-
-	if inputType == "1hotVector":
-
-		review_input = Input(shape=(maxReviewLen,), dtype='int32', name="review")
-
-		sharedEmbedding = Embedding(VocabSize + 2, embedding_dims,
-		                            input_length=maxReviewLen)
-
-		layer = sharedEmbedding(review_input)
+    return X_train, y_train, X_dev, y_dev, X_test, y_test
 
 
-	else:
-		review_input = Input(shape=(maxReviewLen, embedding_dims), dtype="float32", name="review")
-		layer = review_input
+def build_CNN_model(inputType, isIntermediate=False, weight_path=None, **kwargs):
+    """
 
-	sharedConv1 = Convolution1D(nb_filter=num_filters1,
-	                            filter_length=filter_length1,
-	                            border_mode='valid',
-	                            activation='relu',
-	                            subsample_length=stride_len1,
-	                            init='uniform',
-	                            input_length=maxReviewLen,
-	                            batch_input_shape=(batch_size, maxReviewLen, embedding_dims))
+    :param inputType:
+    :param isIntermediate:
+    :param kwargs:
+    :return:
+    """
+    assert inputType in ['embeddingMatrix', '1hotVector'], "unknown input type"
 
-	layer = sharedConv1(layer)
+    if inputType == "1hotVector":
 
-	layer = Dropout(0.25)(layer)
+        review_input = Input(shape=(maxReviewLen,), dtype='int32', name="1hot_review")
 
-	layer = MaxPooling1D(pool_length=2)(layer)
+        sharedEmbedding = Embedding(VocabSize + 2, embedding_dims,
+                                    input_length=maxReviewLen)
 
-	sharedConv2 = Convolution1D(nb_filter=num_filters2,
-	                            filter_length=filter_length2,
-	                            border_mode='valid',
-	                            activation='relu',
-	                            subsample_length=stride_len2,
-	                            init='uniform'
-	                            )
+        layer = sharedEmbedding(review_input)
 
-	layer = sharedConv2(layer)
 
-	layer = Dropout(0.30)(layer)
+    else:
+        review_input = Input(shape=(maxReviewLen, embedding_dims), dtype="float32", name="embedding_review")
+        layer = review_input
 
-	layer = MaxPooling1D(pool_length=2)(layer)
+    sharedConv1 = Convolution1D(nb_filter=num_filters1,
+                                filter_length=filter_length1,
+                                border_mode='valid',
+                                activation='relu',
+                                subsample_length=stride_len1,
+                                init='uniform',
+                                input_length=maxReviewLen,
+                                batch_input_shape=(batch_size, maxReviewLen, embedding_dims))
 
-	sharedConv3 = Convolution1D(nb_filter=num_filters3,
-	                            filter_length=filter_length3,
-	                            border_mode='valid',
-	                            activation='relu',
-	                            subsample_length=stride_len3,
-	                            init='uniform'
-	                            )
+    layer = sharedConv1(layer, name='sharedConv1')
 
-	layer = sharedConv3(layer)
+    layer = Dropout(0.25, )(layer)
 
-	layer = Dropout(0.35)(layer)
+    layer = MaxPooling1D(pool_length=2)(layer)
 
-	layer = MaxPooling1D(pool_length=2)(layer)
+    sharedConv2 = Convolution1D(nb_filter=num_filters2,
+                                filter_length=filter_length2,
+                                border_mode='valid',
+                                activation='relu',
+                                subsample_length=stride_len2,
+                                init='uniform'
+                                )
 
-	sharedConv4 = Convolution1D(nb_filter=num_filters4,
-	                            filter_length=filter_length4,
-	                            border_mode='valid',
-	                            activation='relu',
-	                            subsample_length=stride_len4,
-	                            init='uniform',
+    layer = sharedConv2(layer, name='sharedConv2')
 
-	                            )
+    layer = Dropout(0.30)(layer)
 
-	layer = sharedConv4(layer)
+    layer = MaxPooling1D(pool_length=2)(layer)
 
-	layer = Dropout(0.35)(layer)
+    sharedConv3 = Convolution1D(nb_filter=num_filters3,
+                                filter_length=filter_length3,
+                                border_mode='valid',
+                                activation='relu',
+                                subsample_length=stride_len3,
+                                init='uniform'
+                                )
 
-	layer = MaxPooling1D(pool_length=2)(layer)
+    layer = sharedConv3(layer, name='sharedConv3')
 
-	layer = Flatten()(layer)
+    layer = Dropout(0.35)(layer)
 
-	# Dense layers default to 'glorot_normal' for init weights but that may not be optimal
-	# for NLP tasks
-	# init='uniform'
-	sharedDense1 = Dense(dense_dims1, activation='relu',
-	                     W_regularizer=l2(l=0.001))
+    layer = MaxPooling1D(pool_length=2)(layer)
 
-	layer = sharedDense1(layer)
+    sharedConv4 = Convolution1D(nb_filter=num_filters4,
+                                filter_length=filter_length4,
+                                border_mode='valid',
+                                activation='relu',
+                                subsample_length=stride_len4,
+                                init='uniform',
 
-	layer = Dropout(0.35)(layer)
+                                )
 
-	sharedDense2 = Dense(dense_dims2, activation='relu',
-	                     W_regularizer=l2(l=0.001))
+    layer = sharedConv4(layer, name='sharedConv4')
 
-	out_A = sharedDense2(layer)
+    layer = Dropout(0.35)(layer)
 
-	if isIntermediate:
-		CNN_model = Model(input=[review_input], output=out_A, name="CNN_model")
-		return CNN_model
+    layer = MaxPooling1D(pool_length=2)(layer)
 
-	else:
+    layer = Flatten()(layer)
 
-		lastLayer = Dense(1, activation='sigmoid',
-		                  W_regularizer=l2(l=0.001))
+    # Dense layers default to 'glorot_normal' for init weights but that may not be optimal
+    # for NLP tasks
+    # init='uniform'
+    sharedDense1 = Dense(dense_dims1, activation='relu',
+                         W_regularizer=l2(l=0.001))
 
-		out_B = lastLayer(out_A)
+    layer = sharedDense1(layer, name='sharedDense1')
 
-		CNN_model = Model(input=[review_input], output=out_B, name="CNN_model")
+    layer = Dropout(0.35)(layer)
 
-		CNN_model.compile(optimizer='rmsprop', loss='binary_crossentropy')
+    sharedDense2 = Dense(dense_dims2, activation='relu',
+                         W_regularizer=l2(l=0.001))
 
-		return CNN_model
+    out_A = sharedDense2(layer, name='out_A')
+
+    if isIntermediate:
+        CNN_model = Model(input=[review_input], output=out_A, name="CNN_model")
+        return CNN_model
+
+    else:
+
+        lastLayer = Dense(1, activation='sigmoid',
+                          W_regularizer=l2(l=0.001))
+
+        out_B = lastLayer(out_A, name='out_B')
+
+        CNN_model = Model(input=[review_input], output=out_B, name="CNN_model")
+
+        CNN_model.compile(optimizer='rmsprop', loss='binary_crossentropy')
+
+        if weight_path is not None:
+            CNN_model.load_weights(weight_path)
+
+    return CNN_model
 
 
 def train_CNN_model(model, X_train, y_train, X_dev, y_dev):
-	weightPath = './model_data/saved_weights/' + filename
-	checkpoint = ModelCheckpoint(weightPath + '_W.{epoch:02d}-{val_loss:.3f}.hdf5',
-	                             verbose=1, )
-	earlyStop = EarlyStopping(patience=1, verbose=1)
+    weightPath = './model_data/saved_weights/' + filename
+    checkpoint = ModelCheckpoint(weightPath + '_W.{epoch:02d}-{val_loss:.3f}.hdf5',
+                                 verbose=1, )
+    earlyStop = EarlyStopping(patience=1, verbose=1)
 
-	call_backs = [checkpoint, earlyStop]
+    call_backs = [checkpoint, earlyStop]
 
-	hist = model.fit(X_train, y_train, batch_size=batch_size,
-	          nb_epoch=num_epochs, verbose=1,
-	          validation_data=(X_dev, y_dev),
-	          callbacks=call_backs)
+    hist = model.fit(X_train, y_train, batch_size=batch_size,
+                     nb_epoch=num_epochs, verbose=1,
+                     validation_data=(X_dev, y_dev),
+                     callbacks=call_backs)
 
-	with open(os.path.join('./model_data/model_specs', filename) + '.config', 'w') as f:
-		f.write(str(model.get_config()))
+    with open(os.path.join('./model_data/model_specs', filename) + '.config', 'w') as f:
+        f.write(str(model.get_config()))
 
-	with open(os.path.join('./model_data/model_specs', filename + '.json'), 'w') as f:
-		f.write(model.to_json())
+    with open(os.path.join('./model_data/model_specs', filename + '.json'), 'w') as f:
+        f.write(model.to_json())
 
-	with open(os.path.join('./model_data/model_specs', filename) + '.hist', 'w') as f:
-		f.write(str(hist.history))
+    with open(os.path.join('./model_data/model_specs', filename) + '.hist', 'w') as f:
+        f.write(str(hist.history))
