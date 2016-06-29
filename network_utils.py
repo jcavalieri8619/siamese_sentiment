@@ -2,6 +2,8 @@
 Created by John P Cavalieri on 6/3/16
 
 """
+from exceptions import RuntimeError
+
 import keras.backend as K
 
 
@@ -18,5 +20,8 @@ def get_network_layer_output( model, dataInput, layerNum, **kwargs ):
 	elif phase == 'train':
 		# output in train mode = 1
 		layer_output = get_output( [ dataInput, 1 ] )[ 0 ]
+
+	else:
+		raise RuntimeError("invalid phase passed to get_network_layer_output")
 
 	return layer_output

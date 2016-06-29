@@ -61,7 +61,7 @@ dense_dims3 = 0
 num_epochs = 4
 
 
-def build_CNN_input(usewords=USEWORDS, skiptop=skipTop, devsplit=DEVSPLIT, verbose=True):
+def build_CNN_input(usewords=USEWORDS, skiptop=skipTop, devsplit=DEVSPLIT, verbose=True, **kwargs):
 	"""
 
 	:param usewords:
@@ -74,10 +74,10 @@ def build_CNN_input(usewords=USEWORDS, skiptop=skipTop, devsplit=DEVSPLIT, verbo
 	((X_train, y_train), (X_dev, y_dev), (X_test, y_test)) = build_design_matrix(VocabSize,
 	                                                                             use_words=usewords,
 	                                                                             skip_top=skiptop,
-	                                                                             dev_split=devsplit)
+	                                                                             dev_split=devsplit,
+	                                                                             **kwargs)
 	if verbose:
 		print(len(X_train), 'train sequences')
-		print(len(X_dev), 'test sequences')
 
 		print('X_train shape:', X_train.shape)
 		print('X_dev shape:', X_dev.shape)
@@ -92,6 +92,7 @@ def build_CNN_model(inputType, isIntermediate=False, **kwargs):
 	"""
 
 	:param inputType:
+	:param isIntermediate:
 	:param kwargs:
 	:return:
 	"""

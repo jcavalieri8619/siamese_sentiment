@@ -3,11 +3,29 @@ Created by John P Cavalieri on 5/31/16
 
 """
 
+import copy
+import operator
+from functools import reduce
+
 import numpy as np
 import theano
 import theano.tensor as T
+from keras.objectives import binary_crossentropy
 
 from network_utils import get_network_layer_output
+
+
+# def updateParameters(param,learning_rate,momentum,cost):
+# 	updates=[]
+#
+# 	param_update = theano.shared(param.get_value()* 0.0, broadcastable=param.broadcastable)
+#
+# 	updates.append((param, param - learning_rate * param_update))
+#
+# 	updates.append((param_update, momentum * param_update + (1. - momentum) * T.grad(cost, param)))
+#
+# 	return updates
+
 
 
 def get_embedding_matrices(model, X):
@@ -47,6 +65,7 @@ def identify_highprob_subset(model, X, y, subset_size):
 def data_SGD(trained_model, highProb_subset, loss_func, batch_size=20,
              **kwargs):
 	"""
+	get embeddings for highProb_subset and use trained model without embedding layer
 
 	:param trained_model: trained CNN model with inputType embeddingMatrix
 	:param highProb_subset: design matrix consisting of examples predicted correctly with high probability
@@ -57,42 +76,78 @@ def data_SGD(trained_model, highProb_subset, loss_func, batch_size=20,
 	:return:
 	"""
 
-	X_list = highProb_subset
-	dim1, dim2 = X_list[0].shape
-	X = np.zeros((len(X_list), dim1, dim2))
-	targets = np.ones((dim1, 1))
-
-	for indx, matrix in enumerate(X_list):
-		X[indx] = matrix
+	targets = np.ones((highProb_subset.shape[0], 1))
+	designMatrix = copy.deepcopy(highProb_subset)
 
 	beta = 0.01
 	alpha = 0.01
 
-	X = theano.shared(X, name='X_designMatrix')
+	X = theano.shared(designMatrix, name='X_designMatrix')
+	lagrange_mult = theano.shared(0., name="lagrange_mult")
 	y = T.ivector(name='y_targetvect')
 
-	posClass_probability = trained_model.output  # Probability that input is positive class
-	prediction = posClass_probability > 0.5  # The prediction thresholded at 0.50
-	neg_crossEntropy_loss = -1 * (-y * T.log(posClass_probability) - (1 - y) * T.log(1 - posClass_probability)
-	                              )
-	cost = neg_crossEntropy_loss.mean()
+	# trained model output is the probability that input is in positive class
+	posClass_probability = trained_model.output
+	# predictions are thresholded at 0.5
+	prediction = posClass_probability > 0.5
 
-	# gradient of mean negative cross entropy loss wrt inputs--not weights
-	dCost_dX = T.grad(cost, [trained_model.input])
+	for batch_itr in range((len(highProb_subset) / batch_size) + 1):
+		matrixDiff = (X[batch_itr * batch_size:(batch_itr + 1) * batch_size, :, :] -
+		              highProb_subset[batch_itr * batch_size:(batch_itr + 1) * batch_size, :, :])
 
-	train = theano.function(
-		inputs=[trained_model.input, y],
-		outputs=[prediction, cost],
-		updates=((X, X - alpha * dCost_dX),),
-		name="train_data_func")
+		constrained_inverse_loss = (-1 * binary_crossentropy(trained_model.targets[0], posClass_probability) +
+		                            beta * lagrange_mult * T.dot(matrixDiff, matrixDiff))
 
-	for batch_itr in range((len(highProb_subset) / (batch_size)) + 1):
+		total_cost = constrained_inverse_loss.mean()
 
-		pred, cost = train([X[batch_itr * batch_size:(batch_itr + 1) * batch_size, :, :],
-		                    targets[batch_itr * batch_size:(batch_itr + 1) * batch_size, :, :]])
+		num_gradients = len(trained_model.layers)
 
-		for p, c in zip(pred, cost):
-			print((p, c) + '\n')
+		Dcost_Dlagrange = T.grad(cost=total_cost, wrt=[lagrange_mult])
+		D_layers = list()
+
+		D_layers.append(T.grad(cost=total_cost, wrt=[trained_model.layers[num_gradients - 1].input]))
+
+		for itr in range(num_gradients - 1, 0, -1):
+			out = trained_model.layers[itr].output
+
+			if out.ndim == 0:
+				element = theano.gradient.jacobian(out, wrt=[trained_model.layers[itr - 1].input])
+
+			elif out.ndim == 1:
+				element = theano.gradient.jacobian(out, wrt=[trained_model.layers[itr - 1].input])
+
+			elif out.ndim == 2:
+				element = theano.gradient.jacobian(
+					T.sum(out, axis=1, dtype='float32', keepdims=True, acc_dtype='float32'),
+					wrt=[trained_model.layers[itr - 1].input])
+			elif out.ndim == 3:
+				element = theano.gradient.jacobian(
+					T.sum(out, axis=2, dtype='float32', keepdims=True, acc_dtype='float32'),
+					wrt=[trained_model.layers[itr - 1].input])
+			# element = theano.gradient.jacobian(T.sum(T.sum(out, axis=0,dtype='float32',keepdims=True,acc_dtype='float32'),
+			#                                          1,'float32',True,'float32'),
+			#                                    wrt=[trained_model.layers[itr - 1].input])
+			else:
+				raise RuntimeError("cannot handle ndim > 3")
+
+			D_layers.append(element)
+
+		Dcost_DX = reduce(operator.mul, D_layers, 1)
+
+		Train = theano.function(
+			inputs=[X, y],
+			outputs=[prediction, constrained_inverse_loss],
+			updates=((),),
+			name="SGD_data")
+
+	#
+	# for batch_itr in range((len(highProb_subset) / (batch_size)) + 1):
+	#
+	# 	pred, total_cost = train([X[batch_itr * batch_size:(batch_itr + 1) * batch_size, :, :],
+	# 	                    targets[batch_itr * batch_size:(batch_itr + 1) * batch_size, :, :]])
+	#
+	# 	for p, c in zip(pred, total_cost):
+	# 		print(str((p, c)) + '\n')
 
 
 def dataSGD_test():

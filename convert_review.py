@@ -280,13 +280,11 @@ def build_design_matrix(vocab_size, use_words,
 
 		if not kwargs.get("noTest", False):
 			# return format is (trainingData),(devData),(testData)
-
-
 			return ((designMatrix, targets), (dev_designMatrix[500:], dev_targets[500:]),
 			        (dev_designMatrix[:500], dev_targets[:500]))
 		else:
 			# using dev set but no test set
-			return ((designMatrix, targets), (dev_designMatrix, dev_targets))
+			return ((designMatrix, targets), (dev_designMatrix, dev_targets), (dev_designMatrix[:0], dev_targets[:0]))
 
 	else:
 
