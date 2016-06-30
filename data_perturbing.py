@@ -7,6 +7,7 @@ import copy
 import operator
 from functools import reduce
 
+import keras.backend as K
 import numpy as np
 import theano
 import theano.tensor as T
@@ -28,7 +29,7 @@ from network_utils import get_network_layer_output
 
 
 def get_embedding_matrices(model, X):
-    return get_network_layer_output(model, X, 0)
+    return get_network_layer_output(model, X, 1)
 
 
 def identify_highprob_subset(model, X, y, subset_size):
@@ -41,7 +42,7 @@ def identify_highprob_subset(model, X, y, subset_size):
     :return: tuple with matrix of shape (subset_size,maxreviewLength) representing high probability inputs and
             remaining data pairs not included in high prob subset
     """
-    probs = model.predict_proba(X)
+    probs = model.predict(X)
 
     indices = np.arange(start=0, stop=len(X), dtype='int32').reshape((-1, 1))
 
@@ -54,10 +55,10 @@ def identify_highprob_subset(model, X, y, subset_size):
 
     highProb_indices = posExamples[:, 1]
 
-    X_subset = X[highProb_indices[-1:-subset_size:-1], :, :]
+    X_subset = X[highProb_indices[-1:-subset_size:-1].astype('int32'), :]
 
-    remaining_X = X[highProb_indices[-subset_size:0:-1], :, :]
-    remaining_y = y[highProb_indices[-subset_size:0:-1], :]
+    remaining_X = X[highProb_indices[-subset_size:0:-1].astype('int32'), :]
+    remaining_y = y[highProb_indices[-subset_size:0:-1].astype('int32'), :]
 
     return (X_subset, (remaining_X, remaining_y))
 
@@ -81,42 +82,48 @@ def data_SGD(trained_model, highProb_subset, loss_func, num_epochs, batch_size=2
     targets = np.ones((highProb_subset.shape[0], 1))
     designMatrix = copy.deepcopy(highProb_subset)
 
+    # beta is a sort of regularization parameter for controlling importance of constraint ||Xperturb - Xorig|| < eps
+    # alpha_X and alpha_L are learning rates for SGD wrt inputs X and lagrange multiplier
     beta = 0.01
     alpha_X = 0.01
     alpha_L = 0.01
 
     batched_inputs = list()
     lagrange_mult = theano.shared(0., name="lagrange_mult")
-    y = T.ivector(name='y_targetvect')
 
     # trained model output is the probability that input is in positive class
     posClass_probability = trained_model.output
+
     # predictions are thresholded at 0.5
     prediction = posClass_probability > 0.5
 
-    for epoch in num_epochs:
+    for epoch in range(num_epochs):
 
-        for i, batch_itr in enumerate(range((len(highProb_subset) / batch_size) + 1)):
+        for batch_itr in range((len(highProb_subset) / batch_size)):
 
-            batched_inputs.append(theano.shared(designMatrix[batch_itr * batch_size:(batch_itr + 1) * batch_size, :, :],
-                                                name='X_designMatrix_{}'.format(i)))
+            start = batch_itr * batch_size
+            end = (batch_itr + 1) * batch_size
 
-            matrixDiff = (
-            batched_inputs[i] - highProb_subset[batch_itr * batch_size:(batch_itr + 1) * batch_size, :, :])
+            if not epoch:
+                batched_inputs.append(theano.shared(designMatrix[start:end, :, :],
+                                                    name='X_designMatrix_{}'.format(batch_itr)))
+
+            matrixDiff = (batched_inputs[batch_itr] - highProb_subset[start:end, :, :])
 
             constrained_inverse_loss = (-1 * loss_func(trained_model.targets[0], posClass_probability) +
-                                        beta * lagrange_mult * T.dot(matrixDiff, matrixDiff))
+                                        beta * lagrange_mult * T.sqrt(T.dot(matrixDiff, matrixDiff)) - epsilon)
 
-            total_cost = T.mean(constrained_inverse_loss, dtype='float32', acc_dtype='float32', )
+            total_cost = T.mean(constrained_inverse_loss, dtype='float32', )
 
             num_gradients = len(trained_model.layers)
 
             Dcost_Dlagrange = T.grad(cost=total_cost, wrt=[lagrange_mult])
             DlayerOut_DlayerIn = list()
 
-            DlayerOut_DlayerIn.append(T.grad(cost=total_cost, wrt=[trained_model.layers[num_gradients - 1].input]))
+            DlayerOut_DlayerIn.append(T.grad(cost=total_cost, wrt=[trained_model.layers[-1].input]))
 
             for itr in range(num_gradients - 1, 0, -1):
+                print("layer number: {}\n".format(itr))
                 out = trained_model.layers[itr].output
 
                 if out.ndim == 0:
@@ -127,11 +134,11 @@ def data_SGD(trained_model, highProb_subset, loss_func, num_epochs, batch_size=2
 
                 elif out.ndim == 2:
                     element = theano.gradient.jacobian(
-                            T.sum(out, axis=1, dtype='float32', keepdims=True, acc_dtype='float32'),
+                            (T.sum(out, axis=1, dtype='float32', keepdims=True, )),
                             wrt=[trained_model.layers[itr - 1].input])
                 elif out.ndim == 3:
                     element = theano.gradient.jacobian(
-                            T.sum(out, axis=2, dtype='float32', keepdims=True, acc_dtype='float32'),
+                            (T.sum(out, axis=2, dtype='float32', keepdims=True, )),
                             wrt=[trained_model.layers[itr - 1].input])
                     # element = theano.gradient.jacobian(T.sum(T.sum(out, axis=0,dtype='float32',
                     #                                          keepdims=True,acc_dtype='float32'),
@@ -145,26 +152,16 @@ def data_SGD(trained_model, highProb_subset, loss_func, num_epochs, batch_size=2
             Dcost_DX = reduce(operator.mul, DlayerOut_DlayerIn, 1.0)
 
             SGDtrain = theano.function(
-                    inputs=[trained_model.input, trained_model.targets[0]],
+                    inputs=[trained_model.input, trained_model.targets[0], K.learning_phase()],
                     outputs=[prediction, constrained_inverse_loss],
-                    updates=((batched_inputs[i], batched_inputs[i] - alpha_X * Dcost_DX),
+                    updates=((batched_inputs[batch_itr], batched_inputs[batch_itr] - alpha_X * Dcost_DX),
                              (lagrange_mult, lagrange_mult - alpha_L * Dcost_Dlagrange)),
                     name="SGDtrain", )
 
+            predictionVect, lossVect = SGDtrain(batched_inputs[batch_itr], targets, 1)
 
-
-
-
-
-
-            #
-            # for batch_itr in range((len(highProb_subset) / (batch_size)) + 1):
-            #
-            # 	pred, total_cost = train([X[batch_itr * batch_size:(batch_itr + 1) * batch_size, :, :],
-            # 	                    targets[batch_itr * batch_size:(batch_itr + 1) * batch_size, :, :]])
-            #
-            # 	for p, c in zip(pred, total_cost):
-            # 		print(str((p, c)) + '\n')
+            for pred, loss in zip(predictionVect, lossVect):
+                print("prediction {}, loss {}\n".format(pred, loss))
 
 
 def dataSGD_test():
