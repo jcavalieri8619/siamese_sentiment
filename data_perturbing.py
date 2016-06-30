@@ -10,7 +10,6 @@ from functools import reduce
 import numpy as np
 import theano
 import theano.tensor as T
-from keras.objectives import binary_crossentropy
 
 from network_utils import get_network_layer_output
 
@@ -38,8 +37,9 @@ def identify_highprob_subset(model, X, y, subset_size):
     :param model: trained CNN model with inputType 1hotVectors
     :param X: design matrix
     :param y: targets vector
-    :param subset_size: size of high probability subset to perturb
-    :return:
+    :param subset_size: subset size of correctly predicted inputs w/ high probability
+    :return: tuple with matrix of shape (subset_size,maxreviewLength) representing high probability inputs and
+            remaining data pairs not included in high prob subset
     """
     probs = model.predict_proba(X)
 
@@ -62,18 +62,20 @@ def identify_highprob_subset(model, X, y, subset_size):
     return (X_subset, (remaining_X, remaining_y))
 
 
-def data_SGD(trained_model, highProb_subset, loss_func, num_epochs, batch_size=20,
+def data_SGD(trained_model, highProb_subset, loss_func, num_epochs, batch_size=20, epsilon=0.001,
              **kwargs):
     """
     get embeddings for highProb_subset and use trained model without embedding layer
 
     :param trained_model: trained CNN model with inputType embeddingMatrix
     :param highProb_subset: design matrix consisting of examples predicted correctly with high probability
-    :param loss_func:
-    :param batch_size:
-    :param num_epochs:
+    :param loss_func: objective function: f(ytrue,ypred) i.e. cross entropy, SSE, ...
+    :param num_epochs: number of epochs to perturb data
+    :param batch_size: number of examples in each training batch
+    :param epsilon: || Xperturb - Xorig || < epsilon
     :param kwargs:
-    :return:
+    :return: 3D tensor with shape (len(highProb_subset),maxreviewLength,embedding_dim) representing perturbation of
+            high probability subset of inputs with constrained distance between perturbed inputs and original inputs
     """
 
     targets = np.ones((highProb_subset.shape[0], 1))
@@ -97,15 +99,15 @@ def data_SGD(trained_model, highProb_subset, loss_func, num_epochs, batch_size=2
         for i, batch_itr in enumerate(range((len(highProb_subset) / batch_size) + 1)):
 
             batched_inputs.append(theano.shared(designMatrix[batch_itr * batch_size:(batch_itr + 1) * batch_size, :, :],
-                                                name='X_designMatrix'))
+                                                name='X_designMatrix_{}'.format(i)))
 
             matrixDiff = (
             batched_inputs[i] - highProb_subset[batch_itr * batch_size:(batch_itr + 1) * batch_size, :, :])
 
-            constrained_inverse_loss = (-1 * binary_crossentropy(trained_model.targets[0], posClass_probability) +
+            constrained_inverse_loss = (-1 * loss_func(trained_model.targets[0], posClass_probability) +
                                         beta * lagrange_mult * T.dot(matrixDiff, matrixDiff))
 
-            total_cost = constrained_inverse_loss.mean()
+            total_cost = T.mean(constrained_inverse_loss, dtype='float32', acc_dtype='float32', )
 
             num_gradients = len(trained_model.layers)
 
@@ -147,7 +149,13 @@ def data_SGD(trained_model, highProb_subset, loss_func, num_epochs, batch_size=2
                     outputs=[prediction, constrained_inverse_loss],
                     updates=((batched_inputs[i], batched_inputs[i] - alpha_X * Dcost_DX),
                              (lagrange_mult, lagrange_mult - alpha_L * Dcost_Dlagrange)),
-                    name="SGDtrain")
+                    name="SGDtrain", )
+
+
+
+
+
+
 
             #
             # for batch_itr in range((len(highProb_subset) / (batch_size)) + 1):

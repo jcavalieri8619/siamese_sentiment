@@ -121,7 +121,7 @@ def build_CNN_model(inputType, isIntermediate=False, weight_path=None, **kwargs)
                                 input_length=maxReviewLen,
                                 batch_input_shape=(batch_size, maxReviewLen, embedding_dims))
 
-    layer = sharedConv1(layer, name='sharedConv1')
+    layer = sharedConv1(layer, )
 
     layer = Dropout(0.25, )(layer)
 
@@ -135,7 +135,7 @@ def build_CNN_model(inputType, isIntermediate=False, weight_path=None, **kwargs)
                                 init='uniform'
                                 )
 
-    layer = sharedConv2(layer, name='sharedConv2')
+    layer = sharedConv2(layer, )
 
     layer = Dropout(0.30)(layer)
 
@@ -149,7 +149,7 @@ def build_CNN_model(inputType, isIntermediate=False, weight_path=None, **kwargs)
                                 init='uniform'
                                 )
 
-    layer = sharedConv3(layer, name='sharedConv3')
+    layer = sharedConv3(layer, )
 
     layer = Dropout(0.35)(layer)
 
@@ -160,11 +160,11 @@ def build_CNN_model(inputType, isIntermediate=False, weight_path=None, **kwargs)
                                 border_mode='valid',
                                 activation='relu',
                                 subsample_length=stride_len4,
-                                init='uniform',
+                                init='uniform', name='sharedConv4',
 
                                 )
 
-    layer = sharedConv4(layer, name='sharedConv4')
+    layer = sharedConv4(layer, )
 
     layer = Dropout(0.35)(layer)
 
@@ -178,14 +178,14 @@ def build_CNN_model(inputType, isIntermediate=False, weight_path=None, **kwargs)
     sharedDense1 = Dense(dense_dims1, activation='relu',
                          W_regularizer=l2(l=0.001))
 
-    layer = sharedDense1(layer, name='sharedDense1')
+    layer = sharedDense1(layer, )
 
     layer = Dropout(0.35)(layer)
 
     sharedDense2 = Dense(dense_dims2, activation='relu',
                          W_regularizer=l2(l=0.001))
 
-    out_A = sharedDense2(layer, name='out_A')
+    out_A = sharedDense2(layer, )
 
     if isIntermediate:
         CNN_model = Model(input=[review_input], output=out_A, name="CNN_model")
@@ -194,9 +194,9 @@ def build_CNN_model(inputType, isIntermediate=False, weight_path=None, **kwargs)
     else:
 
         lastLayer = Dense(1, activation='sigmoid',
-                          W_regularizer=l2(l=0.001))
+                          W_regularizer=l2(l=0.001), name='out_B')
 
-        out_B = lastLayer(out_A, name='out_B')
+        out_B = lastLayer(out_A, )
 
         CNN_model = Model(input=[review_input], output=out_B, name="CNN_model")
 
