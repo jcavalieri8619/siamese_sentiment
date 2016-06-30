@@ -111,15 +111,18 @@ def build_siamese_input(verbose=True):
 	return {'training': trainingSets, 'dev': devSets, 'KNN': devKNNsets, 'test': testSets}
 
 
-def build_siamese_model():
+def build_siamese_model(weight_path=None, verbose=True):
 	"""
 
+	:param weight_path: path to saved weights for loading model
+	:param verbose:
 	:return:
 	"""
 
-	print('Building model')
+	if verbose:
+		print('Building siamese model')
 
-	CNN_model = build_CNN_model(inputType='1hotVector', isIntermediate=True)
+	CNN_model = build_CNN_model(inputType='1hotVector', is_IntermediateModel=True)
 
 
 	Lreview = Input( shape = (maxReviewLen,), dtype = 'int32', name = "Lreview" )
@@ -131,23 +134,21 @@ def build_siamese_model():
 	#Rsentiment_prob = Input( shape = (1,), dtype = 'float32', name = "Rsentprob" )
 
 
-
-
-	#TODO with sentiment label info added--CNN_model is CNN_model([review,sentiment_prob])
 	rightbranch = CNN_model([Rreview])
 	leftbranch = CNN_model([Lreview])
 
 	#first take the difference of the final feature representations from the CNN_model
 	#represented by leftbranch and rightbranch
+
 	merged_vector = merge( [ leftbranch, rightbranch ], mode = vectorDifference, output_shape = merged_outshape,
 	                       name = 'merged_vector' )
 
 	# then that difference vector is fed into the final fully connected layer that
 	# outputs the energy i.e. squared euclidian distance ||leftbranch-rightbranch||
+
 	siamese_out = Dense( 1, activation = squaredl2,
 	                     name = 'energy_output' )( merged_vector )
 
-	#TODO if sentiment label info included then inputs=[Lreview,Lsent_prob,Rreview,Rsent_prob]
 	siamese_model = Model( input = [ Lreview, Rreview ], output = siamese_out,
 	                       name = "siamese_model" )
 

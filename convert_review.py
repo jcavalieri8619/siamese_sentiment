@@ -257,7 +257,7 @@ def construct_designmatrix_pairs(VocabSize, useWords, skipTop=0, devSplit=None, 
 	:param VocabSize: number of unique words in the vocabulary
 	:param useWords: True is using words and false is using characters
 	:param skipTop: stop word removal method--removes top K most frequent
-	words in training data
+			words in training data
 	:param devSplit: percent of training data to split into dev set.
 	:param kwargs:
 	:return:

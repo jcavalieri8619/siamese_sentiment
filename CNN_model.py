@@ -92,11 +92,11 @@ def build_CNN_input(usewords=USEWORDS, skiptop=skipTop, devsplit=DEVSPLIT, verbo
     return X_train, y_train, X_dev, y_dev, X_test, y_test
 
 
-def build_CNN_model(inputType, isIntermediate=False, weight_path=None, **kwargs):
+def build_CNN_model(inputType, is_IntermediateModel=False, weight_path=None, **kwargs):
     """
 
-    :param inputType:
-    :param isIntermediate:
+    :param inputType: string indicating whether input is 1 hot vector of embedding matrix
+    :param is_IntermediateModel: True if CNN_model is a sub-model of some larger model
     :param kwargs:
     :return:
     """
@@ -191,7 +191,7 @@ def build_CNN_model(inputType, isIntermediate=False, weight_path=None, **kwargs)
 
     out_A = sharedDense2(layer, )
 
-    if isIntermediate:
+    if is_IntermediateModel:
         CNN_model = Model(input=[review_input], output=out_A, name="CNN_model")
         return CNN_model
 
