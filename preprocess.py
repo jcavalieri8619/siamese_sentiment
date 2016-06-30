@@ -12,12 +12,15 @@ from nltk.probability import FreqDist, ConditionalFreqDist
 
 import modelParameters
 
-ALL_REVIEWS_PATH = './model_data/all_reviews.pickle'  # default file to which to store 'all reviews' string
+ALL_REVIEWS_PATH = './model_data/all_reviews.pickle'
 ALL_POS_REVIEWS_PATH = './model_data/all_pos_reviews.pickle'
 ALL_NEG_REVIEWS_PATH = './model_data/all_neg_reviews.pickle'
-WORD_ONE_HOT_PATH = './model_data/WORD_one_hot_{}.pickle'  # default file to which to store my_one_hot
+WORD_ONE_HOT_PATH = './model_data/WORD_one_hot_{}.pickle'
 CHAR_ONE_HOT_PATH = './model_data/CHAR_one_hots_{}.pickle'
 SENTIMENT_2_REVIEWS_PATH = './model_data/sentmnt2review_map.pickle'
+
+TRAINPOS_DIR = './training_data/train/pos'
+TRAINNEG_DIR = './training_data/train/neg'
 
 
 def generate_char_list( string, strip_html=True ):
@@ -67,20 +70,20 @@ def sentiment2reviews_map(  ):
 	positive reviews with 8 stars; similarly for negitive reviews
 	"""
 
-	if not os.path.isfile(SENTIMENT_2_REVIEWS_PATH):
+	if not os.path.exists(SENTIMENT_2_REVIEWS_PATH):
 		# reviews are grouped by rating into pos and neg maps as single strings
 		pos_files_map = collections.defaultdict( list )  # keys = [7, 8, 9, 10]
 		neg_files_map = collections.defaultdict( list )  # keys = [1, 2, 3, 4]
 
 		# note: review_file[-5] gets rating of review from training set
-		for review_file in os.listdir( './training_data/train/pos' ):
-			with open( "./training_data/train/pos/" + review_file, 'r' ) as review:
+		for review_file in os.listdir(TRAINPOS_DIR):
+			with open(os.path.join(TRAINPOS_DIR, review_file), 'r') as review:
 				stars = int( review_file[ -5 ] )
 				pos_files_map[ stars if stars else 10 ]. \
 					append( (strip_html_tags( review.read( ) )) )
 
-		for review_file in os.listdir( './training_data/train/neg' ):
-			with open( "./training_data/train/neg/" + review_file, 'r' ) as review:
+		for review_file in os.listdir(TRAINNEG_DIR):
+			with open(os.path.join(TRAINNEG_DIR, review_file), 'r') as review:
 				neg_files_map[ int( review_file[ -5 ] ) ]. \
 					append( strip_html_tags( review.read( ) ) )
 
@@ -120,11 +123,10 @@ def concat_review_strings(  verbose = True ):
 	but no preprocessing done on review strings except strip html tags.
 	"""
 
-	if not os.path.isfile(ALL_REVIEWS_PATH):
+	if not os.path.exists(ALL_REVIEWS_PATH):
 
 		if verbose:
-			print('concatenating individual reviews into single string'
-			      ' for all pos, all neg, and all combined...\n')
+			print('concatenting reviews')
 
 		sentiment2review_maps = sentiment2reviews_map(  )
 
@@ -155,13 +157,7 @@ def concat_review_strings(  verbose = True ):
 			pickle.dump( all_pos_reviews, output_file )
 
 
-
-	# previously created data is loaded if it exists
 	else:
-		if verbose:
-			print('loading ',
-			      ALL_REVIEWS_PATH, ALL_POS_REVIEWS_PATH, ALL_NEG_REVIEWS_PATH)
-
 
 		with open( ALL_REVIEWS_PATH, 'rb' ) as input_file:
 			all_reviews = pickle.load( input_file )
@@ -188,11 +184,11 @@ def generate_one_hot_maps( vocab_size,
 	:return:
 	"""
 
-	if (use_words and not os.path.isfile( WORD_ONE_HOT_PATH.format(vocab_size) ) or
-	    not use_words and not os.path.isfile(CHAR_ONE_HOT_PATH.format(vocab_size))):
+	if (use_words and not os.path.exists(WORD_ONE_HOT_PATH.format(vocab_size)) or
+			    not use_words and not os.path.exists(CHAR_ONE_HOT_PATH.format(vocab_size))):
 
 		if verbose:
-			print('one_hot_map not pickled; building it now...\n')
+			print('building word to 1hot indices mapping')
 
 
 
@@ -201,9 +197,6 @@ def generate_one_hot_maps( vocab_size,
 
 		reviewstr_dict = concat_review_strings( )
 		all_reviews = reviewstr_dict['all']
-
-
-
 
 
 		if use_words:
@@ -224,14 +217,12 @@ def generate_one_hot_maps( vocab_size,
 
 		words_by_decreasingfreq = (_freq_dist.most_common()[skip_top:(vocab_size + skip_top)])
 
-		print(words_by_decreasingfreq[:150])
+		if verbose:
+			print(words_by_decreasingfreq[20:60])
 
 		one_hot_maps = collections.defaultdict(int)
 		for idx,(key,val) in enumerate(words_by_decreasingfreq[:vocab_size]):
 			one_hot_maps[key] = idx + modelParameters.UNK_INDEX + 1
-
-
-
 
 
 		if use_words:
@@ -243,9 +234,6 @@ def generate_one_hot_maps( vocab_size,
 
 	# previously created one_hot_maps data is loaded if it exists
 	else:
-		if verbose:
-			print('loading ' % WORD_ONE_HOT_PATH.format(vocab_size) )
-
 		if use_words:
 			with open( WORD_ONE_HOT_PATH.format(vocab_size), 'rb' ) as input_file:
 				one_hot_maps = pickle.load( input_file )

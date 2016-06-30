@@ -214,7 +214,7 @@ def train_siamese_model( model, trainingSets, devSets ):
 			pass
 
 	except KeyboardInterrupt:
-		return trainingSets, devSets
+		pass
 	except:
 		raise
 
@@ -251,4 +251,4 @@ def train_siamese_model( model, trainingSets, devSets ):
 			                                                              )
 			f.write( specs )
 
-	return trainingSets, devSets, hist
+	return hist
