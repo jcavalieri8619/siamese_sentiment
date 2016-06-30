@@ -78,7 +78,7 @@ def build_CNN_input(usewords=USEWORDS, skiptop=skipTop, devsplit=DEVSPLIT, verbo
                                                                                  use_words=usewords,
                                                                                  skip_top=skiptop,
                                                                                  dev_split=devsplit,
-                                                                                 usingValidationSet=testSet
+                                                                                 createValidationSet=testSet
                                                                                  )
     if verbose:
         print(len(X_train), 'train sequences')

@@ -24,21 +24,6 @@ from preprocess import (generate_word_list, generate_char_list,
 TRAIN_LOW_RAM_CUTOFF = None
 DEV_LOW_RAM_CUTOFF = None
 
-DESIGN_MATRIX_PATH_WORD = './model_data/designMatrix_w.pickle'
-TARGET_VECTOR_PATH_WORD = './model_data/targetVect_w.pickle'
-
-DESIGN_MATRIX_PATH_CHAR = './model_data/designMatrix_c.pickle'
-TARGET_VECTOR_PATH_CHAR = './model_data/targetVect_c.pickle'
-
-DEV_DESIGN_MATRIX_PATH_WORD = './model_data/dev_designMatrix_w.pickle'
-DEV_TARGET_VECTOR_PATH_WORD = './model_data/dev_targetVect_w.pickle'
-
-DEV_DESIGN_MATRIX_PATH_CHAR = './model_data/dev_designMatrix_c.pickle'
-DEV_TARGET_VECTOR_PATH_CHAR = './model_data/dev_targetVect_c.pickle'
-
-TEST_SET_DATA_PATH_WORD = './model_data/test_set_data_w.pickle'
-TEST_SET_DATA_PATH_CHAR = './model_data/test_set_data_c.pickle'
-TEST_SET_ID_VECTOR = './model_data/test_set_ID_vect.pickle'
 
 
 # seed for consistency across calls
@@ -46,6 +31,16 @@ random.seed(1515)
 
 
 def to_onehot_vector(reviewObject, one_hot_maps, use_words, skip_top=0, maxlen=None, **kwargs):
+	"""
+
+	:param reviewObject: tuple containing rating and movie review
+	:param one_hot_maps: mapping from words to indices
+	:param use_words: False to use chars
+	:param skip_top: remove K most frequently occuring words seen during training i.e. the,is,a,...
+	:param maxlen: upper limit on words per review; default value set in modelParameters module
+	:param kwargs:
+	:return: tuple containing a vector of 1hot indices representing the movie review and the movie rating
+	"""
 	rating, review = reviewObject
 
 	if use_words:
@@ -66,19 +61,19 @@ def to_onehot_vector(reviewObject, one_hot_maps, use_words, skip_top=0, maxlen=N
 
 
 def build_design_matrix(vocab_size, use_words,
-                        skip_top=0, maxlen=None, dev_split=modelParameters.devset_split,
-                        verbose=True, usingValidationSet=True, **kwargs):
+                        skip_top=0, maxlen=None, dev_split=None,
+                        createValidationSet=True, verbose=True, **kwargs):
 	"""
 
-	:param vocab_size:
-	:param use_words:
-	:param skip_top:
-	:param maxlen:
-	:param dev_split:
+	:param vocab_size: size of vocabularly
+	:param use_words: False to use chars
+	:param skip_top: remove K most frequently occuring words seen during training i.e. the,is,a,...
+	:param maxlen: upper limit on words per review; default value set in modelParameters module
+	:param dev_split: int giving percent of training data to hold out for dev set
+	:param createValidationSet: if True then splits off 700 examples from dev set for validation
 	:param verbose:
-	:param usingValidationSet:
 	:param kwargs:
-	:return:
+	:return: tuple returning design matrix and target for requested data sets: training,dev,validation
 	"""
 	testing_phase = kwargs.get('test_data', None)
 
@@ -90,14 +85,17 @@ def build_design_matrix(vocab_size, use_words,
 	review_iterator = list()
 
 	if testing_phase:
-		# building testing data (test set is not equal to dev set)
+		# this test data is from kaggle competition and it consists of movie reviews and movie IDs
+		# so that predicted sentiment can be paired wih a movie ID
+		TESTDIR = './testing_data/test'
+
 		if verbose:
 			print("building test data objects")
 			print("test data has no targets;\n"
 			      "so the targets vector will contain ID of review at that index")
 
 		review_iterator = list()
-		TESTDIR = './testing_data/test'
+
 
 		for review_file in os.listdir(TESTDIR):
 			with open(os.path.join(TESTDIR, review_file)) as f:
@@ -121,7 +119,6 @@ def build_design_matrix(vocab_size, use_words,
 			                             else modelParameters.MaxLen_c)), dtype='int32')
 
 		# for test data targets vector will hold review IDs; not ratings
-
 		targets = numpy.zeros((modelParameters.testingCount, 1))
 
 
@@ -216,7 +213,7 @@ def build_design_matrix(vocab_size, use_words,
 
 	if dev_split is not None:
 
-		if not usingValidationSet:
+		if not createValidationSet:
 			# using dev set but no validation set
 			return (
 				(designMatrix, targets), (dev_designMatrix, dev_targets), (dev_designMatrix[:0, :], dev_targets[:0, :]))
