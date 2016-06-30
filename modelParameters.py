@@ -5,6 +5,9 @@ Created by John P Cavalieri
 trainingCount = 25000
 testingCount=11000
 
+WEIGHT_PATH = './model_data/saved_weights'
+SPECS_PATH = './model_data/model_specs'
+
 
 #percent of training set to split off into development set
 devset_split =14

@@ -27,8 +27,8 @@ else:
     maxReviewLen = modelParameters.MaxLen_c
     skipTop = 0
 
-basename = "siamese_3_4".format(modelParameters.Margin)
-suffix = datetime.datetime.now().strftime("%y%m%d_%I%M")
+basename = "CNN".format(modelParameters.Margin)
+suffix = datetime.datetime.now().strftime("%m%d_%I%M")
 filename = "_".join([basename, suffix])
 
 batch_size = 20
@@ -70,7 +70,9 @@ def build_CNN_input(usewords=USEWORDS, skiptop=skipTop, devsplit=DEVSPLIT, verbo
     :param verbose:
     :return:
     """
-    print('Building input')
+
+    if verbose:
+        print('Building CNN Inputs')
 
     testSet = kwargs.get('testSet', True)
 
@@ -81,13 +83,12 @@ def build_CNN_input(usewords=USEWORDS, skiptop=skipTop, devsplit=DEVSPLIT, verbo
                                                                                  createValidationSet=testSet
                                                                                  )
     if verbose:
-        print(len(X_train), 'train sequences')
-
-        print('X_train shape:', X_train.shape)
-        print('X_dev shape:', X_dev.shape)
-
-        print('y_train shape:', y_train.shape)
-        print('y_dev shape:', y_dev.shape)
+        print('X_train shape: {}'.format(X_train.shape))
+        print('X_dev shape: {}'.format(X_dev.shape))
+        print('X_test shape: {}'.format(X_test.shape))
+        print('y_train shape: {}'.format(y_train.shape))
+        print('y_dev shape: {}'.format(y_dev.shape))
+        print('y_test shape: {}'.format(y_test.shape))
 
     return X_train, y_train, X_dev, y_dev, X_test, y_test
 
@@ -97,6 +98,7 @@ def build_CNN_model(inputType, is_IntermediateModel=False, weight_path=None, **k
 
     :param inputType: string indicating whether input is 1 hot vector of embedding matrix
     :param is_IntermediateModel: True if CNN_model is a sub-model of some larger model
+    :param weight_path: path to saved weights for loading model
     :param kwargs:
     :return:
     """
@@ -213,7 +215,7 @@ def build_CNN_model(inputType, is_IntermediateModel=False, weight_path=None, **k
 
 
 def train_CNN_model(model, X_train, y_train, X_dev, y_dev):
-    weightPath = './model_data/saved_weights/' + filename
+    weightPath = os.path.join(modelParameters.WEIGHT_PATH, filename)
     checkpoint = ModelCheckpoint(weightPath + '_W.{epoch:02d}-{val_loss:.3f}.hdf5',
                                  verbose=1, )
     earlyStop = EarlyStopping(patience=1, verbose=1)
@@ -225,11 +227,38 @@ def train_CNN_model(model, X_train, y_train, X_dev, y_dev):
                      validation_data=(X_dev, y_dev),
                      callbacks=call_backs)
 
-    with open(os.path.join('./model_data/model_specs', filename) + '.config', 'w') as f:
+    with open(os.path.join(modelParameters.SPECS_PATH, filename) + '.config', 'w') as f:
         f.write(str(model.get_config()))
 
-    with open(os.path.join('./model_data/model_specs', filename + '.json'), 'w') as f:
+    with open(os.path.join(modelParameters.SPECS_PATH, filename + '.json'), 'w') as f:
         f.write(model.to_json())
 
-    with open(os.path.join('./model_data/model_specs', filename) + '.hist', 'w') as f:
+    with open(os.path.join(modelParameters.SPECS_PATH, filename) + '.hist', 'w') as f:
         f.write(str(hist.history))
+
+    with open(os.path.join(modelParameters.SPECS_PATH, filename) + '.specs', 'w') as f:
+        specs = """model: {}\nbatch_size: {}\nembedding_dims: {}\n
+    			num_filters1: {}\nfilter_length1: {}\npool_len1: {}\n
+    			num_filters2: {}\nfilter_length2: {}\npool_len2: {}\n
+    			num_filters3: {}\nfilter_length3: {}\npool_len3: {}\n
+    			num_filters4: {}\nfilter_length4: {}\npool_len4: {}\n
+    			dense_dims1: {}\ndense_dims2: {}\ndense_dims3: {}\n""".format(basename,
+                                                                              batch_size,
+                                                                              embedding_dims,
+                                                                              num_filters1,
+                                                                              filter_length1,
+                                                                              pool_len1,
+                                                                              num_filters2,
+                                                                              filter_length2,
+                                                                              pool_len2,
+                                                                              num_filters3,
+                                                                              filter_length3,
+                                                                              pool_len3,
+                                                                              num_filters4,
+                                                                              filter_length4,
+                                                                              pool_len4,
+                                                                              dense_dims1,
+                                                                              dense_dims2,
+                                                                              dense_dims3
+                                                                              )
+        f.write(specs)

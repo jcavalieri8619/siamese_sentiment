@@ -36,8 +36,8 @@ else:
 	maxReviewLen = modelParameters.MaxLen_c
 	skipTop = 0
 
-basename = "siamese_3_4".format( modelParameters.Margin )
-suffix = datetime.datetime.now( ).strftime( "%y%m%d_%I%M" )
+basename = "siamese"
+suffix = datetime.datetime.now().strftime("%m%d_%I%M")
 filename = "_".join( [ basename, suffix ] )
 
 batch_size = 20
@@ -70,15 +70,7 @@ dense_dims3 = 0
 num_epochs = 4
 
 
-def merged_outshape( inputShapes ):
-	"""
 
-	:param inputShapes:
-	:return:
-	"""
-	shape = list( inputShapes )
-	assert len( shape ) == 2, "merged_outShape: len inputShapes != 2"
-	return shape[ 0 ]
 
 
 def build_siamese_input(verbose=True):
@@ -111,50 +103,59 @@ def build_siamese_input(verbose=True):
 	return {'training': trainingSets, 'dev': devSets, 'KNN': devKNNsets, 'test': testSets}
 
 
-def build_siamese_model(weight_path=None, verbose=True):
+def build_siamese_model(weight_path=None, verbose=True, **kwargs):
 	"""
 
-	:param weight_path: path to saved weights for loading model
+	:param weight_path: path to saved weights for loading entire siamese model
 	:param verbose:
-	:return:
+	:param kwargs: if you want to load CNN_model individially with saved weights then pass keyword arg
+	            CNN_weight_path=path/to/weights
+	:return: dict {'siamese':siamese_model, 'CNN':CNN_model}
 	"""
+
+	def merged_outshape(inputShapes):
+		"""
+		dynamically computes output shape of merge layer
+		:param inputShapes: list of input shapes
+		:return:
+		"""
+		shape = list(inputShapes)
+		return shape[0]
+
+
 
 	if verbose:
 		print('Building siamese model')
 
-	CNN_model = build_CNN_model(inputType='1hotVector', is_IntermediateModel=True)
+	CNN_model = build_CNN_model(inputType='1hotVector',
+	                            is_IntermediateModel=True,
+	                            weight_path=kwargs.get('CNN_weight_path', None))
 
 
 	Lreview = Input( shape = (maxReviewLen,), dtype = 'int32', name = "Lreview" )
 	Rreview = Input( shape = (maxReviewLen,), dtype = 'int32', name = "Rreview" )
 
-
-	#TODO removed sentiment label info for now
-	#Lsentiment_prob = Input( shape = (1,), dtype = 'float32', name = "Lsentprob" )
-	#Rsentiment_prob = Input( shape = (1,), dtype = 'float32', name = "Rsentprob" )
-
-
-	rightbranch = CNN_model([Rreview])
-	leftbranch = CNN_model([Lreview])
+	rightbranch = CNN_model([Rreview], name='right_branch')
+	leftbranch = CNN_model([Lreview], name='left_branch')
 
 	#first take the difference of the final feature representations from the CNN_model
 	#represented by leftbranch and rightbranch
-
 	merged_vector = merge( [ leftbranch, rightbranch ], mode = vectorDifference, output_shape = merged_outshape,
 	                       name = 'merged_vector' )
 
 	# then that difference vector is fed into the final fully connected layer that
 	# outputs the energy i.e. squared euclidian distance ||leftbranch-rightbranch||
+	energy = Dense(1, activation=squaredl2,
+	               name = 'energy_output')( merged_vector )
 
-	siamese_out = Dense( 1, activation = squaredl2,
-	                     name = 'energy_output' )( merged_vector )
-
-	siamese_model = Model( input = [ Lreview, Rreview ], output = siamese_out,
+	siamese_model = Model(input=[Lreview, Rreview], output=energy,
 	                       name = "siamese_model" )
 
 
 	#TODO SGD is used in Lecunns paper; I am using RMSPROP instead for now
 	#sgd = SGD( lr = 0.001, momentum = 0.0, decay = 0.0, nesterov = False )
+
+
 	siamese_model.compile( optimizer = 'rmsprop', loss = contrastiveLoss )
 
 	return {'siamese': siamese_model, 'CNN': CNN_model}
@@ -178,8 +179,7 @@ def train_siamese_model( model, trainingSets, devSets ):
 
 	Xdev_left, ydev_left, Xdev_right, ydev_right, dev_similarity = devSets
 
-
-	weightPath = './model_data/saved_weights/' + filename
+	weightPath = os.path.join(modelParameters.WEIGHT_PATH, filename)
 
 	checkpoint = ModelCheckpoint(weightPath + '_W.{epoch:02d}-{val_loss:.3f}.hdf5', verbose=1, )
 
@@ -187,8 +187,6 @@ def train_siamese_model( model, trainingSets, devSets ):
 
 	call_backs = [ checkpoint, earlyStop ]
 
-	# TODO if sent label included then the input dictionary includes
-	#{'Lsentprob': y_left, 'Rsentprob': y_right} and same for validation data inputs
 
 	try:
 		hist = model[ 'siamese' ].fit({ 'Lreview': X_left, 'Rreview': X_right, },
@@ -202,14 +200,14 @@ def train_siamese_model( model, trainingSets, devSets ):
 		                              callbacks=call_backs)
 
 		try:
-			with open( os.path.join( './model_data/model_specs', filename + '.json' ), 'w' ) as f:
+			with open(os.path.join(modelParameters.SPECS_PATH, filename + '.json'), 'w') as f:
 				f.write( model[ 'siamese' ].to_json( ) )
 		except:
 			print( "error writing model json" )
 			pass
 
 		try:
-			with open( os.path.join( './model_data/model_specs', filename ) + '.hist', 'w' ) as f:
+			with open(os.path.join(modelParameters.SPECS_PATH, filename) + '.hist', 'w') as f:
 				f.write( str( hist.history ) )
 		except:
 			print( "error writing training history" )
@@ -222,34 +220,35 @@ def train_siamese_model( model, trainingSets, devSets ):
 
 	finally:
 
-		with open( os.path.join( './model_data/model_specs', filename ) + '.config', 'w' ) as f:
+		with open(os.path.join(modelParameters.SPECS_PATH, filename) + '.config', 'w') as f:
 			f.write( str( model[ 'siamese' ].get_config( ) ) )
 
-		with open( os.path.join( './model_data/model_specs', filename ) + '.specs', 'w' ) as f:
-			specs = """batch_size: {}\nembedding_dims: {}\ncontrast_margin: {}\n
+		with open(os.path.join(modelParameters.SPECS_PATH, filename) + '.specs', 'w') as f:
+			specs = """model: {}\nbatch_size: {}\nembedding_dims: {}\ncontrast_margin: {}\n
 			num_filters1: {}\nfilter_length1: {}\npool_len1: {}\n
 			num_filters2: {}\nfilter_length2: {}\npool_len2: {}\n
 			num_filters3: {}\nfilter_length3: {}\npool_len3: {}\n
 			num_filters4: {}\nfilter_length4: {}\npool_len4: {}\n
-			dense_dims1: {}\ndense_dims2: {}\ndense_dims3: {}\n""".format( batch_size,
-			                                                               embedding_dims,
-			                                                               modelParameters.Margin,
-			                                                               num_filters1,
-			                                                               filter_length1,
-			                                                               pool_len1,
-			                                                               num_filters2,
-			                                                               filter_length2,
-			                                                               pool_len2,
-			                                                               num_filters3,
-			                                                               filter_length3,
-			                                                               pool_len3,
-			                                                               num_filters4,
-			                                                               filter_length4,
-			                                                               pool_len4,
-			                                                               dense_dims1,
-			                                                               dense_dims2,
-			                                                               dense_dims3
-			                                                               )
+			dense_dims1: {}\ndense_dims2: {}\ndense_dims3: {}\n""".format(basename,
+			                                                              batch_size,
+			                                                              embedding_dims,
+			                                                              modelParameters.Margin,
+			                                                              num_filters1,
+			                                                              filter_length1,
+			                                                              pool_len1,
+			                                                              num_filters2,
+			                                                              filter_length2,
+			                                                              pool_len2,
+			                                                              num_filters3,
+			                                                              filter_length3,
+			                                                              pool_len3,
+			                                                              num_filters4,
+			                                                              filter_length4,
+			                                                              pool_len4,
+			                                                              dense_dims1,
+			                                                              dense_dims2,
+			                                                              dense_dims3
+			                                                              )
 			f.write( specs )
 
 	return trainingSets, devSets, hist
