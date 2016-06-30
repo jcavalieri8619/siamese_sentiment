@@ -71,11 +71,15 @@ def build_CNN_input(usewords=USEWORDS, skiptop=skipTop, devsplit=DEVSPLIT, verbo
     :return:
     """
     print('Building input')
+
+    testSet = kwargs.get('testSet', True)
+
     ((X_train, y_train), (X_dev, y_dev), (X_test, y_test)) = build_design_matrix(VocabSize,
                                                                                  use_words=usewords,
                                                                                  skip_top=skiptop,
                                                                                  dev_split=devsplit,
-                                                                                 **kwargs)
+                                                                                 usingValidationSet=testSet
+                                                                                 )
     if verbose:
         print(len(X_train), 'train sequences')
 

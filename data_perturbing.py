@@ -5,7 +5,6 @@ Created by John P Cavalieri on 5/31/16
 
 import copy
 import h5py
-import operator
 import os
 import shutil
 from functools import reduce
@@ -84,29 +83,29 @@ def identify_highprob_subset(model, X, y, subset_size):
 
     y_subset = np.concatenate((y_pos_subset, y_neg_subset), axis=0)
 
-    return (X_subset, y_subset, (remaining_X, remaining_y))
+    return (X_subset, y_subset), (remaining_X, remaining_y)
 
 
-def data_SGD(trained_model, highProb_subset, loss_func=binary_crossentropy,
-             num_epochs=5, batch_size=20, epsilon=0.001, **kwargs):
+def data_SGD(trained_model, optimal_subset, loss_func,
+             num_epochs, batch_size, epsilon, **kwargs):
     """
-    get embeddings for highProb_subset and use trained model without embedding layer
+    get embeddings for optimal_subset and use embedding type trained model
 
     :param trained_model: trained CNN model with inputType embeddingMatrix
-    :param highProb_subset: tuple of high prob X and y's
+    :param optimal_subset: tuple of high prob X and y's
     :param loss_func: objective function: f(ytrue,ypred) i.e. cross entropy, SSE, ...
     :param num_epochs: number of epochs to perturb data
     :param batch_size: number of examples in each training batch
     :param epsilon: || Xperturb - Xorig || < epsilon
     :param kwargs:
     :return: 3D tensor with shape (len(highProb_subset),maxreviewLength,embedding_dim) representing perturbation of
-            high probability subset of inputs with constrained distance between perturbed inputs and original inputs
+            high probability inputs constrained distance between perturbed inputs and original inputs
     """
 
-    targets = highProb_subset[1]
+    targets = optimal_subset[1]
     targets = targets.astype('int32')
 
-    designMatrix = copy.deepcopy(highProb_subset[0])
+    designMatrix = copy.deepcopy(optimal_subset[0])
     designMatrix = designMatrix.astype(theano.config.floatX)
 
 
@@ -127,7 +126,7 @@ def data_SGD(trained_model, highProb_subset, loss_func=binary_crossentropy,
 
     for epoch in range(num_epochs):
 
-        for batch_itr in range((len(highProb_subset[0]) / batch_size)):
+        for batch_itr in range((len(optimal_subset[0]) / batch_size)):
 
             start = batch_itr * batch_size
             end = (batch_itr + 1) * batch_size
@@ -136,7 +135,7 @@ def data_SGD(trained_model, highProb_subset, loss_func=binary_crossentropy,
                 batched_inputs.append(theano.shared(designMatrix[start:end, :, :],
                                                     name='X_designMatrix_{}'.format(batch_itr)))
 
-            matrixDiff = (batched_inputs[batch_itr] - highProb_subset[0][start:end, :, :])
+            matrixDiff = (batched_inputs[batch_itr] - optimal_subset[0][start:end, :, :])
 
             constrained_inverse_loss = (-1 * loss_func(trained_model.targets[0], posClass_probability) +
                                         beta * lagrange_mult * (T.sqrt(T.dot(matrixDiff, matrixDiff)) - epsilon))
@@ -146,9 +145,7 @@ def data_SGD(trained_model, highProb_subset, loss_func=binary_crossentropy,
             num_gradients = len(trained_model.layers)
 
             Dcost_Dlagrange = T.grad(cost=total_cost, wrt=[lagrange_mult])
-            DlayerOut_DlayerIn = list()
-
-            DlayerOut_DlayerIn.append(T.grad(cost=total_cost, wrt=[trained_model.layers[-1].input]))
+            DlayerOut_DlayerIn = [T.grad(cost=total_cost, wrt=[trained_model.layers[-1].input])]
 
             gradLayers = [0, 1, 3, 4, 6, 7, 9, 10, 12, 14, 16, 17]
             gradLayers.reverse()
@@ -157,25 +154,25 @@ def data_SGD(trained_model, highProb_subset, loss_func=binary_crossentropy,
                 out = trained_model.layers[itr].output
 
                 if out.ndim == 0:
-                    element = theano.grad(out, wrt=[trained_model.layers[itr - 1].input])
+                    element = theano.gradient.jacobian(out, wrt=[trained_model.layers[itr - 1 if itr else itr].input])
 
                 elif out.ndim == 1:
-                    element = theano.gradient.jacobian(out, wrt=[trained_model.layers[itr - 1].input])
+                    element = theano.gradient.jacobian(out, wrt=[trained_model.layers[itr - 1 if itr else itr].input])
 
                 elif out.ndim == 2:
                     element = theano.gradient.jacobian(
                             T.sum(out, axis=1, dtype=theano.config.floatX, keepdims=False, ),
-                            wrt=[trained_model.layers[itr - 1].input])
+                            wrt=[trained_model.layers[itr - 1 if itr else itr].input])
                 elif out.ndim == 3:
                     element = theano.gradient.jacobian(
-                            T.sum(out, axis=2, dtype=theano.config.floatX, keepdims=False, ),
-                            wrt=[trained_model.layers[itr - 1].input])
+                            T.flatten(T.sum(out, axis=2, dtype=theano.config.floatX, keepdims=False, ), outdim=1),
+                            wrt=[trained_model.layers[itr - 1 if itr else itr].input])
                 else:
                     raise RuntimeError("data_SGD: cannot handle ndim > 3")
 
                 DlayerOut_DlayerIn.append(element)
 
-            Dcost_DX = reduce(operator.mul, DlayerOut_DlayerIn, 1.0)
+            Dcost_DX = reduce(T.prod, DlayerOut_DlayerIn, 1.0)
 
             SGDtrain = theano.function(
                     inputs=[trained_model.input, trained_model.targets[0], K.learning_phase()],
@@ -186,8 +183,10 @@ def data_SGD(trained_model, highProb_subset, loss_func=binary_crossentropy,
 
             predictionVect, lossVect = SGDtrain(batched_inputs[batch_itr], targets, 1)
 
-            for pred, loss in zip(predictionVect, lossVect):
-                print("prediction {}, loss {}\n".format(pred, loss))
+            for pred, target, loss in zip(predictionVect, targets, lossVect):
+                print("prediction {},target {}, loss {}\n".format(pred, target, loss))
+
+    return batched_inputs
 
 
 def convert_1hotWeights_to_embedWeights(weight_path):
@@ -235,20 +234,21 @@ def convert_1hotWeights_to_embedWeights(weight_path):
     hdf5_file.flush()
     hdf5_file.close()
 
+    return new_path
 
-def peturb_inputs(trained_1hotModel, trained_embedModel, X, y, loss_fn, subset_size, **kwargs):
-    """
 
-    :param trained_1hotModel:
-    :param trained_embedModel:
-    :param X:
-    :param y:
-    :param loss_fn:
-    :param subsetSize:
-    :param kwargs:
-    :return:
-    """
+def perturb_testing():
+    from CNN_model import build_CNN_input, build_CNN_model
 
-    X_highprob, (Xleftover, yleftover) = identify_highprob_subset(trained_1hotModel, X, y, subset_size)
+    _, _, X, y, _, _ = build_CNN_input(testSet=False)
+    trained_1hotModel = build_CNN_model('1hotVector', weight_path='./model_data/saved_weights/CNN_0.27.hdf5')
+    trained_embedModel = build_CNN_model('embeddingMatrix', weight_path='./model_data/saved_weights/noembed_0.27.hdf5')
 
-    X_highprob_embeddings = get_embedding_matrices(trained_1hotModel, X_highprob)
+    subset_size = 1000
+
+    highprob_subset, (Xleftover, yleftover) = identify_highprob_subset(trained_1hotModel, X, y, subset_size)
+
+    X_highprob_embeddings = get_embedding_matrices(trained_1hotModel, highprob_subset[0])
+
+    X_perturb = data_SGD(trained_embedModel, X_highprob_embeddings, loss_func=binary_crossentropy,
+                         num_epochs=5, batch_size=20, epsilon=0.001)

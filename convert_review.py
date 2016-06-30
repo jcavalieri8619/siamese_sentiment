@@ -4,7 +4,6 @@ Created by John P Cavalieri
 """
 from __future__ import print_function
 
-import cPickle
 import multiprocessing
 import os
 import random
@@ -43,7 +42,7 @@ TEST_SET_ID_VECTOR = './model_data/test_set_ID_vect.pickle'
 
 
 # seed for consistency across calls
-# random.seed( 1515 )
+random.seed(1515)
 
 
 def to_onehot_vector(reviewObject, one_hot_maps, use_words, skip_top=0, maxlen=None, **kwargs):
@@ -67,8 +66,8 @@ def to_onehot_vector(reviewObject, one_hot_maps, use_words, skip_top=0, maxlen=N
 
 
 def build_design_matrix(vocab_size, use_words,
-                        skip_top=0, maxlen=None, dev_split=None,
-                        verbose=True, **kwargs):
+                        skip_top=0, maxlen=None, dev_split=modelParameters.devset_split,
+                        verbose=True, usingValidationSet=True, **kwargs):
 	"""
 
 	:param vocab_size:
@@ -77,117 +76,72 @@ def build_design_matrix(vocab_size, use_words,
 	:param maxlen:
 	:param dev_split:
 	:param verbose:
+	:param usingValidationSet:
 	:param kwargs:
 	:return:
 	"""
 	testing_phase = kwargs.get('test_data', None)
 
-	if testing_phase:
-
-		# in testing phase with no targets
-		# attempting to find pickled data
-		assert dev_split is not None, "cannot generate dev set for test data set"
-
-		if use_words and os.path.isfile(TEST_SET_DATA_PATH_WORD):
-			print("word TEST design matrix found, loading pickle")
-			with open(TEST_SET_DATA_PATH_WORD, 'rb') as f:
-				designMatrix = cPickle.load(f)
-			with open(TEST_SET_ID_VECTOR, 'rb') as f:
-				targets = cPickle.load(f)
-
-			return (designMatrix, targets)
-
-		elif not use_words and os.path.isfile(TEST_SET_DATA_PATH_CHAR):
-			print("char TEST design matrix found, loading pickle")
-			with open(TEST_SET_DATA_PATH_CHAR, 'rb') as f:
-				designMatrix = cPickle.load(f)
-			with open(TEST_SET_ID_VECTOR, 'rb') as f:
-				targets = cPickle.load(f)
-
-			return (designMatrix, targets)
-
-
-
-
-	else:
-		# in training phase with data and targets
-		# attempting to find pickled data
-
-		if use_words and os.path.isfile(DESIGN_MATRIX_PATH_WORD):
-			print("word TRAINING design matrix found, loading pickle")
-			with open(DESIGN_MATRIX_PATH_WORD, 'rb') as f:
-				designMatrix = cPickle.load(f)
-			with open(TARGET_VECTOR_PATH_WORD, 'rb') as f:
-				targets = cPickle.load(f)
-
-			if dev_split is not None:
-				with open(DEV_DESIGN_MATRIX_PATH_WORD, 'rb') as f:
-					dev_designMatrix = cPickle.load(f)
-				with open(DEV_TARGET_VECTOR_PATH_WORD, 'rb') as f:
-					dev_targets = cPickle.load(f)
-
-				if not kwargs.get("noTest", False):
-					# return format is (trainingData),(devData),(testData)
-					return ((designMatrix, targets), (dev_designMatrix[500:], dev_targets[500:]),
-					        (dev_designMatrix[:500], dev_targets[:500]))
-				else:
-
-					return ((designMatrix, targets), (dev_designMatrix, dev_targets))
-
-			else:
-
-				return (designMatrix, targets)
-
-	# couldn't find any pickled data so generating it here
-
 	if verbose:
 		print("pickled data not found, building it...")
 
-	one_hots = generate_one_hot_maps(vocab_size, skip_top, use_words)
+	word2index_mapping = generate_one_hot_maps(vocab_size, skip_top, use_words)
 
 	review_iterator = list()
 
 	if testing_phase:
 		# building testing data (test set is not equal to dev set)
-		print("building test data objects")
-		print("test data has no targets;\n"
-		      "so the targets vector will contain ID of review at that index")
+		if verbose:
+			print("building test data objects")
+			print("test data has no targets;\n"
+			      "so the targets vector will contain ID of review at that index")
 
 		review_iterator = list()
-		for review_file in os.listdir('./testing_data/test/'):
-			with open('./testing_data/test/' + review_file) as f:
+		TESTDIR = './testing_data/test'
+
+		for review_file in os.listdir(TESTDIR):
+			with open(os.path.join(TESTDIR, review_file)) as f:
 				# review id and review text in tuple
 				review_iterator.append((review_file[:-4], f.read()))
 
 		if use_words:
-			print("building TEST word design matrix")
+			if verbose:
+				print("building TEST word design matrix")
+
 			designMatrix = numpy.zeros((modelParameters.testingCount,
 			                            (maxlen if maxlen is not None
 			                             else modelParameters.MaxLen_w)), dtype='int32')
 
 		else:
-			print("building TEST char design matrix")
+			if verbose:
+				print("building TEST char design matrix")
+
 			designMatrix = numpy.zeros((modelParameters.testingCount,
 			                            (maxlen if maxlen is not None
 			                             else modelParameters.MaxLen_c)), dtype='int32')
 
-		##for test data targets vector will hold review IDs; not ratings
+		# for test data targets vector will hold review IDs; not ratings
+
 		targets = numpy.zeros((modelParameters.testingCount, 1))
 
 
 
 	else:
-		# building training data
+		# building TRAINING data
 
 		sentiment_reviews = sentiment2reviews_map()
 
 		if use_words:
-			print("building TRAINING word design matrix")
+			if verbose:
+				print("building TRAINING word design matrix")
+
 			designMatrix = numpy.zeros((modelParameters.trainingCount,
 			                            (maxlen if maxlen is not None
 			                             else modelParameters.MaxLen_w)), dtype='int32')
 		else:
-			print("building TRAINING char design matrix")
+			if verbose:
+				print("building TRAINING char design matrix")
+
 			designMatrix = numpy.zeros((modelParameters.trainingCount,
 			                            (maxlen if maxlen is not None
 			                             else modelParameters.MaxLen_c)), dtype='int32')
@@ -207,24 +161,29 @@ def build_design_matrix(vocab_size, use_words,
 	          modelParameters.MaxLen_c)
 
 	func_to_one_hot = partial(to_onehot_vector,
-	                          one_hot_maps=one_hots,
+	                          one_hot_maps=word2index_mapping,
 	                          use_words=use_words,
 	                          skip_top=skip_top,
 	                          maxlen=MAXlen,
 	                          )
 
 	# design matrix built in parallel because why not
-	workers = multiprocessing.Pool(processes=8)
+	workers = multiprocessing.Pool(multiprocessing.cpu_count())
 	results = workers.map(func_to_one_hot,
 	                      review_iterator)
 	workers.close()
 	workers.join()
 
 	if dev_split is not None:
-		print("creating dev set")
+
+		assert isinstance(dev_split, int), "dev_split must be integer such that 14 implies 14%"
+
+		if verbose:
+			print("creating dev set")
+
 		random.shuffle(results)
 
-		split = int((float(dev_split) / 100) * modelParameters.trainingCount)
+		split = int((float(dev_split) / 100.0) * modelParameters.trainingCount)
 		dev_set = results[:split]
 		results = results[split:]
 
@@ -240,51 +199,32 @@ def build_design_matrix(vocab_size, use_words,
 			dev_targets[idx, 0] = rating >= 7
 
 	for idx, (vector, rating) in enumerate(results):
+
 		designMatrix[idx, :] = vector
+
 		if testing_phase:
 			# rating==review ID for test data (test data != dev set)
 			targets[idx, 0] = rating
+
 		else:
 			targets[idx, 0] = rating >= 7
 
-	print("finished building data design matrix, now pickling")
-
-	if testing_phase is not None:
-		##test ID vector is same for both char and word
-		with open(TEST_SET_ID_VECTOR, 'wb') as f:
-			cPickle.dump(targets, f)
-
-		if use_words:
-			with open(TEST_SET_DATA_PATH_WORD, 'wb') as f:
-				cPickle.dump(designMatrix, f)
-
-		else:
-			with open(TEST_SET_DATA_PATH_CHAR, 'wb') as f:
-				cPickle.dump(designMatrix, f)
+	if verbose:
+		print("finished generating design matrices and target vectors")
 
 
-	else:
-		if use_words:
-			with open(DESIGN_MATRIX_PATH_WORD, 'wb') as f:
-				cPickle.dump(designMatrix, f)
-			with open(TARGET_VECTOR_PATH_WORD, 'wb') as f:
-				cPickle.dump(targets, f)
-
-			if dev_split is not None:
-				with open(DEV_DESIGN_MATRIX_PATH_WORD, 'wb') as f:
-					cPickle.dump(dev_designMatrix, f)
-				with open(DEV_TARGET_VECTOR_PATH_WORD, 'wb') as f:
-					cPickle.dump(dev_targets, f)
 
 	if dev_split is not None:
 
-		if not kwargs.get("noTest", False):
-			# return format is (trainingData),(devData),(testData)
-			return ((designMatrix, targets), (dev_designMatrix[500:], dev_targets[500:]),
-			        (dev_designMatrix[:500], dev_targets[:500]))
+		if not usingValidationSet:
+			# using dev set but no validation set
+			return (
+				(designMatrix, targets), (dev_designMatrix, dev_targets), (dev_designMatrix[:0, :], dev_targets[:0, :]))
+
 		else:
-			# using dev set but no test set
-			return ((designMatrix, targets), (dev_designMatrix, dev_targets), (dev_designMatrix[:0], dev_targets[:0]))
+			# return format is (trainingData),(devData),(testData)
+			return ((designMatrix, targets), (dev_designMatrix[500:, :], dev_targets[500:, :]),
+			        (dev_designMatrix[:500, :], dev_targets[:500, :]))
 
 	else:
 
@@ -341,7 +281,7 @@ def construct_review_pairs(VocabSize, useWords, skipTop=0, devSplit=None, **kwar
 	                                                           use_words=useWords,
 	                                                           skip_top=skipTop,
 	                                                           dev_split=devSplit,
-	                                                           noTest=True)
+	                                                           noValidationSet=True)
 
 	if TRAIN_LOW_RAM_CUTOFF is not None or \
 					DEV_LOW_RAM_CUTOFF is not None:
