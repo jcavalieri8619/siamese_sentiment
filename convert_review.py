@@ -51,14 +51,14 @@ def to_onehot_vector(reviewObject, one_hot_maps, use_words, skip_top=0, maxlen=N
 
 	if use_words:
 		MAXlen = maxlen if maxlen is not None else modelParameters.MaxLen_w
-		vector_of_onehots = numpy.zeros((1, MAXlen))
+		vector_of_onehots = numpy.zeros((1, MAXlen), dtype='int32')
 		vector_of_onehots += modelParameters.UNK_INDEX
 		for indx, word in enumerate(generate_word_list(review)[:MAXlen]):
 			vector_of_onehots[0, indx] = one_hot_maps[word]
 
 	else:
 		MAXlen = maxlen if maxlen is not None else modelParameters.MaxLen_c
-		vector_of_onehots = numpy.zeros((1, maxlen))
+		vector_of_onehots = numpy.zeros((1, maxlen), dtype='int32')
 		vector_of_onehots += modelParameters.UNK_INDEX
 		for indx, char in enumerate(generate_char_list(review)[:MAXlen]):
 			vector_of_onehots[0, indx] = one_hot_maps[char]
@@ -163,13 +163,13 @@ def build_design_matrix(vocab_size, use_words,
 			print("building TEST word design matrix")
 			designMatrix = numpy.zeros((modelParameters.testingCount,
 			                            (maxlen if maxlen is not None
-			                             else modelParameters.MaxLen_w)))
+			                             else modelParameters.MaxLen_w)), dtype='int32')
 
 		else:
 			print("building TEST char design matrix")
 			designMatrix = numpy.zeros((modelParameters.testingCount,
 			                            (maxlen if maxlen is not None
-			                             else modelParameters.MaxLen_c)))
+			                             else modelParameters.MaxLen_c)), dtype='int32')
 
 		##for test data targets vector will hold review IDs; not ratings
 		targets = numpy.zeros((modelParameters.testingCount, 1))
@@ -185,14 +185,14 @@ def build_design_matrix(vocab_size, use_words,
 			print("building TRAINING word design matrix")
 			designMatrix = numpy.zeros((modelParameters.trainingCount,
 			                            (maxlen if maxlen is not None
-			                             else modelParameters.MaxLen_w)))
+			                             else modelParameters.MaxLen_w)), dtype='int32')
 		else:
 			print("building TRAINING char design matrix")
 			designMatrix = numpy.zeros((modelParameters.trainingCount,
 			                            (maxlen if maxlen is not None
-			                             else modelParameters.MaxLen_c)))
+			                             else modelParameters.MaxLen_c)), dtype='int32')
 
-		targets = numpy.zeros((modelParameters.trainingCount, 1))
+		targets = numpy.zeros((modelParameters.trainingCount, 1), dtype='int32')
 
 		for label, file_map in sentiment_reviews.iteritems():
 			for stars, reviewList in file_map.iteritems():
@@ -228,8 +228,8 @@ def build_design_matrix(vocab_size, use_words,
 		dev_set = results[:split]
 		results = results[split:]
 
-		dev_designMatrix = numpy.zeros((len(dev_set), MAXlen))
-		dev_targets = numpy.zeros((len(dev_set), 1))
+		dev_designMatrix = numpy.zeros((len(dev_set), MAXlen), dtype='int32')
+		dev_targets = numpy.zeros((len(dev_set), 1), dtype='int32')
 
 		designMatrix = numpy.resize(designMatrix, (len(results), MAXlen))
 		targets = numpy.resize(targets, (len(results), 1))
@@ -461,18 +461,18 @@ def construct_review_pairs(VocabSize, useWords, skipTop=0, devSplit=None, **kwar
 	X_left = numpy.zeros((len(Traincombo[:TRAIN_CUTOFF]), modelParameters.MaxLen_w), dtype='int32')
 	X_right = numpy.zeros((len(Traincombo[:TRAIN_CUTOFF]), modelParameters.MaxLen_w), dtype='int32')
 
-	y_left = numpy.zeros((len(Traincombo[:TRAIN_CUTOFF]), 1))
-	y_right = numpy.zeros((len(Traincombo[:TRAIN_CUTOFF]), 1))
+	y_left = numpy.zeros((len(Traincombo[:TRAIN_CUTOFF]), 1), dtype='int32')
+	y_right = numpy.zeros((len(Traincombo[:TRAIN_CUTOFF]), 1), dtype='int32')
 
-	similarity_labels = numpy.zeros((len(Traincombo[:TRAIN_CUTOFF]), 1))
+	similarity_labels = numpy.zeros((len(Traincombo[:TRAIN_CUTOFF]), 1), dtype='int32')
 
 	Xtest_left = numpy.zeros((len(Traincombo[TRAIN_CUTOFF:]), modelParameters.MaxLen_w), dtype='int32')
 	Xtest_right = numpy.zeros((len(Traincombo[TRAIN_CUTOFF:]), modelParameters.MaxLen_w), dtype='int32')
 
-	ytest_left = numpy.zeros((len(Traincombo[TRAIN_CUTOFF:]), 1))
-	ytest_right = numpy.zeros((len(Traincombo[TRAIN_CUTOFF:]), 1))
+	ytest_left = numpy.zeros((len(Traincombo[TRAIN_CUTOFF:]), 1), dtype='int32')
+	ytest_right = numpy.zeros((len(Traincombo[TRAIN_CUTOFF:]), 1), dtype='int32')
 
-	similarity_testlabels = numpy.zeros((len(Traincombo[TRAIN_CUTOFF:]), 1))
+	similarity_testlabels = numpy.zeros((len(Traincombo[TRAIN_CUTOFF:]), 1), dtype='int32')
 
 	random.shuffle(Traincombo)
 	for idx, (left, right, similar_label) in enumerate(Traincombo[:TRAIN_CUTOFF]):
@@ -496,16 +496,16 @@ def construct_review_pairs(VocabSize, useWords, skipTop=0, devSplit=None, **kwar
 	Xdev_left = numpy.zeros((len(Devcombo[:DEV_CUTOFF]), modelParameters.MaxLen_w), dtype='int32')
 	Xdev_right = numpy.zeros((len(Devcombo[:DEV_CUTOFF]), modelParameters.MaxLen_w), dtype='int32')
 
-	ydev_left = numpy.zeros((len(Devcombo[:DEV_CUTOFF]), 1))
-	ydev_right = numpy.zeros((len(Devcombo[:DEV_CUTOFF]), 1))
-	similarity_devlabels = numpy.zeros((len(Devcombo[:DEV_CUTOFF]), 1))
+	ydev_left = numpy.zeros((len(Devcombo[:DEV_CUTOFF]), 1), dtype='int32')
+	ydev_right = numpy.zeros((len(Devcombo[:DEV_CUTOFF]), 1), dtype='int32')
+	similarity_devlabels = numpy.zeros((len(Devcombo[:DEV_CUTOFF]), 1), dtype='int32')
 
 	XdevKnn_left = numpy.zeros((len(Devcombo[DEV_CUTOFF:]), modelParameters.MaxLen_w), dtype='int32')
 	XdevKnn_right = numpy.zeros((len(Devcombo[DEV_CUTOFF:]), modelParameters.MaxLen_w), dtype='int32')
 
-	ydevKnn_left = numpy.zeros((len(Devcombo[DEV_CUTOFF:]), 1))
-	ydevKnn_right = numpy.zeros((len(Devcombo[DEV_CUTOFF:]), 1))
-	similarity_devKnnlabels = numpy.zeros((len(Devcombo[DEV_CUTOFF:]), 1))
+	ydevKnn_left = numpy.zeros((len(Devcombo[DEV_CUTOFF:]), 1), dtype='int32')
+	ydevKnn_right = numpy.zeros((len(Devcombo[DEV_CUTOFF:]), 1), dtype='int32')
+	similarity_devKnnlabels = numpy.zeros((len(Devcombo[DEV_CUTOFF:]), 1), dtype='int32')
 
 	random.shuffle(Devcombo)
 	for idx, (left, right, similar_label) in enumerate(Devcombo[:DEV_CUTOFF]):
