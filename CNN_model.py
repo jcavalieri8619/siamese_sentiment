@@ -27,7 +27,7 @@ else:
     maxReviewLen = modelParameters.MaxLen_c
     skipTop = 0
 
-basename = "CNN".format(modelParameters.Margin)
+basename = "CNN"
 suffix = datetime.datetime.now().strftime("%m%d_%I%M")
 filename = "_".join([basename, suffix])
 
