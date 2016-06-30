@@ -80,7 +80,7 @@ def build_design_matrix(vocab_size, use_words,
 	if verbose:
 		print("pickled data not found, building it...")
 
-	word2index_mapping = generate_one_hot_maps(vocab_size, skip_top, use_words)
+
 
 	review_iterator = list()
 
@@ -88,13 +88,13 @@ def build_design_matrix(vocab_size, use_words,
 		# this test data is from kaggle competition and it consists of movie reviews and movie IDs
 		# so that predicted sentiment can be paired wih a movie ID
 		TESTDIR = './testing_data/test'
+		# cannot use dev or validation sets with kaggle test data
+		dev_split = createValidationSet = None
 
 		if verbose:
 			print("building test data objects")
 			print("test data has no targets;\n"
 			      "so the targets vector will contain ID of review at that index")
-
-		review_iterator = list()
 
 
 		for review_file in os.listdir(TESTDIR):
@@ -152,7 +152,10 @@ def build_design_matrix(vocab_size, use_words,
 
 		random.shuffle(review_iterator)
 
-	##now in common area where both test and training phase will execute
+	# now in common area where both test and training phase will execute
+
+	word2index_mapping = generate_one_hot_maps(vocab_size, skip_top, use_words)
+
 	MAXlen = (maxlen if maxlen is not None else
 	          modelParameters.MaxLen_w if use_words else
 	          modelParameters.MaxLen_c)
@@ -173,7 +176,7 @@ def build_design_matrix(vocab_size, use_words,
 
 	if dev_split is not None:
 
-		assert isinstance(dev_split, int), "dev_split must be integer such that 14 implies 14%"
+		assert isinstance(dev_split, int), "dev_split must be integer e.g. 14 implies 14%"
 
 		if verbose:
 			print("creating dev set")
@@ -209,9 +212,7 @@ def build_design_matrix(vocab_size, use_words,
 	if verbose:
 		print("finished generating design matrices and target vectors")
 
-
-
-	if dev_split is not None:
+	if not testing_phase and dev_split is not None:
 
 		if not createValidationSet:
 			# using dev set but no validation set
@@ -228,7 +229,7 @@ def build_design_matrix(vocab_size, use_words,
 		return (designMatrix, targets)
 
 
-def get_testing_data(vocab_size, use_words):
+def construct_kaggle_test_data(vocab_size, use_words):
 	"""
 	generates testing data for kaggle competition. This data set does not include
 	targets but instead has IDs so that kaggle can score the results
@@ -241,7 +242,7 @@ def get_testing_data(vocab_size, use_words):
 	                           test_data=True)
 
 
-def construct_review_pairs(VocabSize, useWords, skipTop=0, devSplit=None, **kwargs):
+def construct_designmatrix_pairs(VocabSize, useWords, skipTop=0, devSplit=None, verbose=True, **kwargs):
 	"""
 	first generates standard design matrix and target vector then builds pairs
 	 for siamese input. Effectively we take all positive reviews choose 2, all
@@ -274,21 +275,20 @@ def construct_review_pairs(VocabSize, useWords, skipTop=0, devSplit=None, **kwar
 	TRAIN_CUTOFF = 21500
 	DEV_CUTOFF = 3000
 
-	((X_train, y_train), (X_dev, y_dev)) = build_design_matrix(VocabSize,
-	                                                           use_words=useWords,
-	                                                           skip_top=skipTop,
-	                                                           dev_split=devSplit,
-	                                                           noValidationSet=True)
+	((X_train, y_train), (X_dev, y_dev), _) = build_design_matrix(VocabSize,
+	                                                              use_words=useWords,
+	                                                              skip_top=skipTop,
+	                                                              dev_split=devSplit,
+	                                                              createValidationSet=False)
 
-	if TRAIN_LOW_RAM_CUTOFF is not None or \
-					DEV_LOW_RAM_CUTOFF is not None:
+	if TRAIN_LOW_RAM_CUTOFF is not None:
 		X_train = X_train[:TRAIN_LOW_RAM_CUTOFF]
 		y_train = y_train[:TRAIN_LOW_RAM_CUTOFF]
 
 		X_dev = X_dev[:DEV_LOW_RAM_CUTOFF]
 		y_dev = y_dev[:DEV_LOW_RAM_CUTOFF]
 
-	assert len(X_train) == len(y_train), "training data and targets different length"
+
 	trainPairs = [(x, y) for (x, y) in zip(X_train, y_train)]
 	devPairs = [(x, y) for (x, y) in zip(X_dev, y_dev)]
 
@@ -306,55 +306,56 @@ def construct_review_pairs(VocabSize, useWords, skipTop=0, devSplit=None, **kwar
 
 	Traincombo = list()
 	Devcombo = list()
-	print("building positive combos")
+
+	if verbose:
+		print("building pairs of design matrices and target vectors for positive movie reviews")
 
 	pcombo = list(combinations(posTrain, 2))
-
 	count = 0
 	random.shuffle(pcombo)
+
 	for item in pcombo:
-
-		assert item[0][1] == item[1][1], "pos train combo logic error"
-
 		count += 1
-		# for of postraincombo list is [((Xleft,yleft),(Xright,yright),similarity),...]
 		Traincombo.append((item[0], item[1], SIMILAR))
 		if count >= TRAINCOMBO_SIZE:
 			del pcombo
 			break
 
-	print("building negative combos")
+	if verbose:
+		print("building pairs of design matrices and target vectors for negative movie reviews")
+
 	ncombo = list(combinations(negTrain, 2))
 	count = 0
 	random.shuffle(ncombo)
-	for item in ncombo:
-		assert item[0][1] == item[1][1], "neg train combo logic error"
 
+	for item in ncombo:
 		count += 1
 		Traincombo.append((item[0], item[1], SIMILAR))
 		if count >= TRAINCOMBO_SIZE:
 			del ncombo
 			break
 
-	print("building positive dev combos")
+	if verbose:
+		print("building pairs of dev design matrices and target vectors for positive movie reviews")
+
 	pdcombo = list(combinations(posDev, 2))
 	count = 0
 	random.shuffle(pdcombo)
 	for item in pdcombo:
-		assert item[0][1] == item[1][1], "pos dev combo logic error"
-
 		count += 1
 		Devcombo.append((item[0], item[1], SIMILAR))
 		if count >= DEVCOMBO_SIZE:
 			del pdcombo
 			break
 
-	print("building negative dev combos")
+	if verbose:
+		print("building pairs of dev design matrices and target vectors for negative movie reviews")
+
+
 	ndcombo = list(combinations(negDev, 2))
 	count = 0
 	random.shuffle(ndcombo)
 	for item in ndcombo:
-		assert item[0][1] == item[1][1], "neg dev combo logic error"
 
 		count += 1
 		Devcombo.append((item[0], item[1], SIMILAR))
@@ -362,11 +363,14 @@ def construct_review_pairs(VocabSize, useWords, skipTop=0, devSplit=None, **kwar
 			del ndcombo
 			break
 
-	print("building mixed combos")
-	allTrainCombo = list(combinations(trainPairs[:16000], 2))
+	if verbose:
+		print("building pairs of design matrices and target vectors for both pos and neg movie reviews")
 
+
+	allTrainCombo = list(combinations(trainPairs[:16000], 2))
 	count = 0
 	random.shuffle(allTrainCombo)
+
 	for item in allTrainCombo:
 		if item[0][1] == item[1][1]:
 			continue
@@ -377,10 +381,14 @@ def construct_review_pairs(VocabSize, useWords, skipTop=0, devSplit=None, **kwar
 			del allTrainCombo
 			break
 
-	print("building mixed dev combos")
+	if verbose:
+		print("building pairs of dev design matrices and target vectors for both pos and neg movie reviews")
+
+
 	allDevCombo = list(combinations(devPairs[:2000], 2))
 	count = 0
 	random.shuffle(allDevCombo)
+
 	for item in allDevCombo:
 		if item[0][1] != item[1][1]:
 			continue
@@ -459,7 +467,8 @@ def construct_review_pairs(VocabSize, useWords, skipTop=0, devSplit=None, **kwar
 
 		similarity_devKnnlabels[idx, 0] = similar_label
 
-	print("finished building siamese input")
+	if verbose:
+		print("finished building pairs of movie review design matrices")
 
 	return ((X_left, y_left, X_right, y_right, similarity_labels),
 	        (Xdev_left, ydev_left, Xdev_right, ydev_right, similarity_devlabels),
