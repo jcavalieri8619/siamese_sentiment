@@ -31,224 +31,288 @@ from network_utils import get_network_layer_output
 
 
 
-def get_embedding_matrices(model, X):
-    return get_network_layer_output(model, X, 1)
+def get_embedding_matrices( model, X ):
+	return get_network_layer_output( model, X, 1 )
 
 
-def identify_highprob_subset(model, X, y, subset_size):
-    """
+def identify_highprob_subset( model, X, y, subset_size, **kwargs ):
+	"""
 
-    :param model: trained CNN model with inputType 1hotVectors
-    :param X: design matrix
-    :param y: targets vector
-    :param subset_size: subset size of correctly predicted inputs w/ high probability
-    :return: tuple with matrix of shape (subset_size,maxreviewLength) representing high probability inputs and
-            remaining data pairs not included in high prob subset
-    """
-    probs = model.predict(X)
+	:param model: trained CNN model with inputType 1hotVectors
+	:param X: design matrix
+	:param y: targets vector
+	:param subset_size: subset size of correctly predicted inputs w/ high probability
+	:return: tuple with matrix of shape (subset_size,maxreviewLength) representing high probability inputs and
+			remaining data pairs not included in high prob subset
+	"""
 
-    indices = np.arange(start=0, stop=len(X), dtype='int32').reshape((-1, 1))
+	DEBUG_MODE = kwargs.get( "DEBUG", False )
 
-    prob_vs_index = np.concatenate((probs.reshape((-1, 1)), indices), axis=1)
+	if DEBUG_MODE:
+		print("feeding forward inputs to identifying most optimal subset")
 
-    targets = y.reshape((-1,))
+	probs = model.predict( X )
 
-    posExamples = prob_vs_index[targets == 1, :]
-    posExamples.sort(axis=0)
+	if DEBUG_MODE:
+		print("finished feeding forward")
 
-    negExamples = prob_vs_index[targets == 0, :]
-    negExamples.sort(axis=0)
+	indices = np.arange( start=0, stop=len( X ), dtype='int32' ).reshape( (-1, 1) )
 
-    highProb_pos_indices = posExamples[:, 1]
+	prob_vs_index = np.concatenate( (probs.reshape( (-1, 1) ), indices), axis=1 )
 
-    highProb_neg_indices = negExamples[:, 1]
+	targets = y.reshape( (-1,) )
 
-    X_pos_subset = X[highProb_pos_indices[-1:-(subset_size / 2 + 1):-1].astype('int32'), :]
+	posExamples = prob_vs_index[targets == 1, :]
+	posExamples.sort( axis=0 )
 
-    y_pos_subset = np.ones((X_pos_subset.shape[0],), dtype='int32')
+	negExamples = prob_vs_index[targets == 0, :]
+	negExamples.sort( axis=0 )
 
-    X_neg_subset = X[highProb_neg_indices[:subset_size / 2].astype('int32'), :]
+	highProb_pos_indices = posExamples[:, 1]
 
-    y_neg_subset = np.zeros((X_neg_subset.shape[0],), dtype='int32')
+	highProb_neg_indices = negExamples[:, 1]
 
-    remaining_X = np.concatenate((X[highProb_pos_indices[-(subset_size / 2 + 1):0:-1].astype('int32'), :],
-                                  X[highProb_neg_indices[subset_size / 2:].astype('int32'), :]),
-                                 axis=0)
+	X_pos_subset = X[highProb_pos_indices[-1:-(subset_size / 2 + 1):-1].astype( 'int32' ), :]
 
-    remaining_y = np.concatenate((y[highProb_pos_indices[-(subset_size / 2 + 1):0:-1].astype('int32'), :],
-                                  y[highProb_neg_indices[subset_size / 2:].astype('int32'), :]),
-                                 axis=0)
+	y_pos_subset = np.ones( (X_pos_subset.shape[0],), dtype='int32' )
 
-    X_subset = np.concatenate((X_pos_subset, X_neg_subset), axis=0)
+	X_neg_subset = X[highProb_neg_indices[:subset_size / 2].astype( 'int32' ), :]
 
-    y_subset = np.concatenate((y_pos_subset, y_neg_subset), axis=0)
+	y_neg_subset = np.zeros( (X_neg_subset.shape[0],), dtype='int32' )
 
-    return (X_subset, y_subset), (remaining_X, remaining_y)
+	remaining_X = np.concatenate( (X[highProb_pos_indices[-(subset_size / 2 + 1):0:-1].astype( 'int32' ), :],
+	                               X[highProb_neg_indices[subset_size / 2:].astype( 'int32' ), :]),
+	                              axis=0 )
 
+	remaining_y = np.concatenate( (y[highProb_pos_indices[-(subset_size / 2 + 1):0:-1].astype( 'int32' ), :],
+	                               y[highProb_neg_indices[subset_size / 2:].astype( 'int32' ), :]),
+	                              axis=0 )
 
-def data_SGD(trained_model, optimal_subset, loss_func,
-             num_epochs, batch_size, epsilon, **kwargs):
-    """
-    get embeddings for optimal_subset and use embedding type trained model
+	X_subset = np.concatenate( (X_pos_subset, X_neg_subset), axis=0 )
 
-    :param trained_model: trained CNN model with inputType embeddingMatrix
-    :param optimal_subset: tuple of high prob X and y's
-    :param loss_func: objective function: f(ytrue,ypred) i.e. cross entropy, SSE, ...
-    :param num_epochs: number of epochs to perturb data
-    :param batch_size: number of examples in each training batch
-    :param epsilon: || Xperturb - Xorig || < epsilon
-    :param kwargs:
-    :return: 3D tensor with shape (len(highProb_subset),maxreviewLength,embedding_dim) representing perturbation of
-            high probability inputs constrained distance between perturbed inputs and original inputs
-    """
+	y_subset = np.concatenate( (y_pos_subset, y_neg_subset), axis=0 )
 
-    targets = optimal_subset[1]
-    targets = targets.astype('int32')
+	return (X_subset, y_subset), (remaining_X, remaining_y)
 
-    designMatrix = copy.deepcopy(optimal_subset[0])
-    designMatrix = designMatrix.astype(theano.config.floatX)
 
+def batched_matrixNorm( A, B ):
+	pass
 
-    # beta is a sort of regularization parameter for controlling importance of constraint ||Xperturb - Xorig|| < eps
-    # alpha_X and alpha_L are learning rates for SGD wrt inputs X and lagrange multiplier
-    beta = 0.01
-    alpha_X = 0.01
-    alpha_L = 0.01
 
-    batched_inputs = list()
-    lagrange_mult = theano.shared(0., name="lagrange_mult")
+def data_SGD( trained_model, optimal_subset, loss_func,
+              num_epochs, batch_size, epsilon, **kwargs ):
+	"""
+	get embeddings for optimal_subset and use embedding type trained model
 
-    # trained model output is the probability that input is in positive class
-    posClass_probability = trained_model.output
+	:param trained_model: trained CNN model with inputType embeddingMatrix
+	:param optimal_subset: tuple of high prob X and y's
+	:param loss_func: objective function: f(ytrue,ypred) i.e. cross entropy, SSE, ...
+	:param num_epochs: number of epochs to perturb data
+	:param batch_size: number of examples in each training batch
+	:param epsilon: || Xperturb - Xorig || < epsilon
+	:param kwargs:
+	:return: 3D tensor with shape (len(highProb_subset),maxreviewLength,embedding_dim) representing perturbation of
+			high probability inputs constrained distance between perturbed inputs and original inputs
+	"""
 
-    # predictions are thresholded at 0.5
-    prediction = posClass_probability > 0.5
+	DEBUG_MODE = kwargs.get( "DEBUG", False )
 
-    for epoch in range(num_epochs):
+	targets = optimal_subset[1]
+	# theano is complaining that targets needs to be float32 type instead of int32...why?
+	targets = targets.reshape( (-1, 1) ).astype( 'float32' )
 
-        for batch_itr in range((len(optimal_subset[0]) / batch_size)):
+	original_input = optimal_subset[0].astype( theano.config.floatX )
 
-            start = batch_itr * batch_size
-            end = (batch_itr + 1) * batch_size
+	designMatrix = copy.deepcopy( original_input )
+	designMatrix = designMatrix.astype( theano.config.floatX )
 
-            if not epoch:
-                batched_inputs.append(theano.shared(designMatrix[start:end, :, :],
-                                                    name='X_designMatrix_{}'.format(batch_itr)))
+	# beta is a sort of regularization parameter for controlling importance of constraint ||Xperturb - Xorig|| < eps
+	# alpha_X and alpha_L are learning rates for SGD wrt inputs X and lagrange multiplier
+	beta = 0.01
+	alpha_X = 0.01
+	alpha_L = 0.01
 
-            matrixDiff = (batched_inputs[batch_itr] - optimal_subset[0][start:end, :, :])
+	batched_sharedvar_inputs = list( )
+	batched_reg_inputs = list( )
 
-            constrained_inverse_loss = (-1 * loss_func(trained_model.targets[0], posClass_probability) +
-                                        beta * lagrange_mult * (T.sqrt(T.dot(matrixDiff, matrixDiff)) - epsilon))
+	lagrange_mult = theano.shared( 0.5, name="lagrange_mult" )
 
-            total_cost = T.mean(constrained_inverse_loss, dtype=theano.config.floatX, )
+	# trained model output is the probability that input is in positive class
+	posClass_probability = trained_model.layers[-1].output
 
-            num_gradients = len(trained_model.layers)
+	# predictions are thresholded at 0.5
+	prediction = posClass_probability > 0.5
 
-            Dcost_Dlagrange = T.grad(cost=total_cost, wrt=[lagrange_mult])
-            DlayerOut_DlayerIn = [T.grad(cost=total_cost, wrt=[trained_model.layers[-1].input])]
+	for epoch in range( num_epochs ):
 
-            gradLayers = [0, 1, 3, 4, 6, 7, 9, 10, 12, 14, 16, 17]
-            gradLayers.reverse()
-            for itr in gradLayers:  # range(num_gradients - 1, 0, -1):
-                print("layer number: {}\n".format(itr))
-                out = trained_model.layers[itr].output
+		for batch_itr in range( (len( targets ) / batch_size) ):
 
-                if out.ndim == 0:
-                    element = theano.gradient.jacobian(out, wrt=[trained_model.layers[itr - 1 if itr else itr].input])
+			start = batch_itr * batch_size
+			end = (batch_itr + 1) * batch_size
 
-                elif out.ndim == 1:
-                    element = theano.gradient.jacobian(out, wrt=[trained_model.layers[itr - 1 if itr else itr].input])
+			if not epoch:
+				batched_sharedvar_inputs.append( theano.shared( designMatrix[start:end, :, :],
+				                                                name='X_designMatrix_{}'.format( batch_itr ) ) )
 
-                elif out.ndim == 2:
-                    element = theano.gradient.jacobian(
-                            T.sum(out, axis=1, dtype=theano.config.floatX, keepdims=False, ),
-                            wrt=[trained_model.layers[itr - 1 if itr else itr].input])
-                elif out.ndim == 3:
-                    element = theano.gradient.jacobian(
-                            T.flatten(T.sum(out, axis=2, dtype=theano.config.floatX, keepdims=False, ), outdim=1),
-                            wrt=[trained_model.layers[itr - 1 if itr else itr].input])
-                else:
-                    raise RuntimeError("data_SGD: cannot handle ndim > 3")
+				batched_reg_inputs.append( original_input[start:end, :, :] )
 
-                DlayerOut_DlayerIn.append(element)
+				if DEBUG_MODE:
+					print(
+						"batched design matrix shape: {}".format(
+							batched_sharedvar_inputs[batch_itr].get_value( ).shape ))
 
-            Dcost_DX = reduce(T.prod, DlayerOut_DlayerIn, 1.0)
+			# computes tensor difference then sums along the batch dimension to result in matrix so that matrix norm
+			# can be computed on the difference. this may only make sense for batch_size == 1 (on-line learning)
+			dimreduc_differene = T.sum( (batched_sharedvar_inputs[batch_itr] - batched_reg_inputs[batch_itr]),
+			                            axis=0, dtype=theano.config.floatX )
 
-            SGDtrain = theano.function(
-                    inputs=[trained_model.input, trained_model.targets[0], K.learning_phase()],
-                    outputs=[prediction, constrained_inverse_loss],
-                    updates=((batched_inputs[batch_itr], batched_inputs[batch_itr] - alpha_X * Dcost_DX),
-                             (lagrange_mult, lagrange_mult - alpha_L * Dcost_Dlagrange)),
-                    name="SGDtrain", )
+			# negates the loss so that minimizing loss is actually maximixing loss and constrained the Frobenius
+			# norm between perturbed inputs and original inputs to be less than epsilon for small epsilon.
+			constrained_negated_loss = (-1 * loss_func( trained_model.targets[0], posClass_probability ) +
+			                            beta * lagrange_mult * (T.nlinalg.trace( T.dot( dimreduc_differene,
+			                                                                            dimreduc_differene ) )) -
+			                            epsilon ** 2)
 
-            predictionVect, lossVect = SGDtrain(batched_inputs[batch_itr], targets, 1)
+			total_cost = T.mean( constrained_negated_loss, dtype=theano.config.floatX, )
 
-            for pred, target, loss in zip(predictionVect, targets, lossVect):
-                print("prediction {},target {}, loss {}\n".format(pred, target, loss))
+			Dcost_Dlagrange = T.grad( cost=total_cost, wrt=lagrange_mult )
 
-    return batched_inputs
+			DlayerOut_DlayerIn = [T.grad( cost=total_cost, wrt=trained_model.layers[-1].output )]
 
+			# gradLayers = [0, 1, 3, 4, 6, 7, 9, 10, 12, 14, 16, 17]
+			# gradLayers.reverse()
 
-def convert_1hotWeights_to_embedWeights(weight_path):
-    """
-    the CNN model is always trained with input type 1hotVector because the model accepts
-    movie reviews and these are naturally vectors with integer elements not real matrices so the
-    embeddings must be learned. However, the only way to perturb movie reviews under the constraint
-    ||Xperturb - Xorig|| < epsilon is to start with a real embedding matrix--to achieve this the
-    saved weights from 1hotVector type models are modified to accept a matrix as input and start
-    with a convolutional layer.
+			num_gradients = len( trained_model.layers )
 
-    :param weight_path:
-    :return:
-    """
+			for itr in range( num_gradients - 1, 0, -1 ):
+				print("layer number: {}".format( itr ))
+				layer_output = trained_model.layers[itr].output
 
-    fileName = os.path.basename(weight_path)
-    filePath = os.path.dirname(weight_path)
+				if layer_output.ndim == 0:
+					element = theano.gradient.jacobian( layer_output, wrt=trained_model.layers[itr].input )
+					if DEBUG_MODE:
+						print("layer_output.ndim == 0")
 
-    fileName = "embed_mod_" + fileName
+				elif layer_output.ndim == 1:
+					element = theano.gradient.jacobian( layer_output, wrt=trained_model.layers[itr].input )
+					if DEBUG_MODE:
+						print("layer_output.ndim == 1")
 
-    new_path = os.path.join(filePath, fileName)
+				elif layer_output.ndim == 2:
+					element = theano.gradient.jacobian(
+							T.sum( layer_output, axis=1, dtype=theano.config.floatX, keepdims=False, ),
+							wrt=trained_model.layers[itr].input )
+					if DEBUG_MODE:
+						print("layer_output.ndim == 2")
 
-    shutil.copyfile(weight_path, new_path)
+				elif layer_output.ndim == 3:
+					element = theano.gradient.jacobian(
+							T.sum( T.sum( layer_output, axis=2, dtype=theano.config.floatX, keepdims=False, ),
+							       axis=0, dtype=theano.config.floatX ),
+							wrt=trained_model.layers[itr].input )
 
-    hdf5_file = h5py.File(new_path, 'r+')
+					if DEBUG_MODE:
+						print("layer_output.ndim == 3")
+				else:
+					raise RuntimeError( "data_SGD: cannot handle ndim > 3" )
 
-    attr_key = hdf5_file.attrs.keys()[0]
-    attr_vals = hdf5_file.attrs.values()[0].tolist()
+				DlayerOut_DlayerIn.append( element )
 
-    attr_vals.remove('embedding_1')
-    attr_vals[0] = 'embedding_review'
+			Dcost_DX = reduce( T.dot, DlayerOut_DlayerIn, 1.0 )
 
-    attr_array = np.asarray(attr_vals, 'str')
+			testFunc = theano.function( [trained_model.layers[0].input, trained_model.targets[0], K.learning_phase( )],
+			                            Dcost_Dlagrange, name="perturbTestFunc" )
 
-    hdf5_file.attrs[attr_key] = attr_array
+			Dlagrange = testFunc( batched_reg_inputs[batch_itr], targets[:20], 1 )
 
-    embedded_review_group = hdf5_file.create_group(u'/embedding_review')
+			return Dlagrange, batched_sharedvar_inputs[batch_itr]
 
-    embedded_review_group.attrs[u'weight_names'] = np.asarray([], theano.config.floatX)
+		# SGDtrain = theano.function(
+		# 		inputs=[trained_model.input, trained_model.targets[0], K.learning_phase()],
+		# 		outputs=[prediction, constrained_negated_loss],
+		# 		updates=((batched_sharedvar_inputs[batch_itr], batched_sharedvar_inputs[batch_itr] - alpha_X *
+		# Dcost_DX),
+		# 		         (lagrange_mult, lagrange_mult - alpha_L * Dcost_Dlagrange)),
+		# 		name="SGDtrain", )
+		#
+		# predictionVect, lossVect = SGDtrain(batched_sharedvar_inputs[batch_itr], targets, 1)
+		#
+		# for pred, target, loss in zip(predictionVect, targets, lossVect):
+		# 	print("prediction {},target {}, loss {}\n".format(pred, target, loss))
 
-    hdf5_file.pop(u'1hot_review')
+	return batched_sharedvar_inputs
 
-    hdf5_file.pop(u'embedding_1')
 
-    hdf5_file.flush()
-    hdf5_file.close()
+def convert_1hotWeights_to_embedWeights( weight_path ):
+	"""
+	the CNN model is always trained with input type 1hotVector because the model accepts
+	movie reviews and these are naturally vectors with integer elements not real matrices so the
+	embeddings must be learned. However, the only way to perturb movie reviews under the constraint
+	||Xperturb - Xorig|| < epsilon is to start with a real embedding matrix--to achieve this the
+	saved weights from 1hotVector type models are modified to accept a matrix as input and start
+	with a convolutional layer.
 
-    return new_path
+	:param weight_path:
+	:return:
+	"""
 
+	fileName = os.path.basename( weight_path )
+	filePath = os.path.dirname( weight_path )
 
-def perturb_testing():
-    from CNN_model import build_CNN_input, build_CNN_model
+	fileName = "embed_mod_" + fileName
 
-    _, _, X, y, _, _ = build_CNN_input(testSet=False)
-    trained_1hotModel = build_CNN_model('1hotVector', weight_path='./model_data/saved_weights/CNN_0.27.hdf5')
-    trained_embedModel = build_CNN_model('embeddingMatrix', weight_path='./model_data/saved_weights/noembed_0.27.hdf5')
+	new_path = os.path.join( filePath, fileName )
 
-    subset_size = 1000
+	shutil.copyfile( weight_path, new_path )
 
-    highprob_subset, (Xleftover, yleftover) = identify_highprob_subset(trained_1hotModel, X, y, subset_size)
+	hdf5_file = h5py.File( new_path, 'r+' )
 
-    X_highprob_embeddings = get_embedding_matrices(trained_1hotModel, highprob_subset[0])
+	attr_key = hdf5_file.attrs.keys( )[0]
+	attr_vals = hdf5_file.attrs.values( )[0].tolist( )
 
-    X_perturb = data_SGD(trained_embedModel, X_highprob_embeddings, loss_func=binary_crossentropy,
-                         num_epochs=5, batch_size=20, epsilon=0.001)
+	attr_vals.remove( 'embedding_1' )
+	attr_vals[0] = 'embedding_review'
+
+	attr_array = np.asarray( attr_vals, 'str' )
+
+	hdf5_file.attrs[attr_key] = attr_array
+
+	embedded_review_group = hdf5_file.create_group( u'/embedding_review' )
+
+	embedded_review_group.attrs[u'weight_names'] = np.asarray( [], theano.config.floatX )
+
+	hdf5_file.pop( u'1hot_review' )
+
+	hdf5_file.pop( u'embedding_1' )
+
+	hdf5_file.flush( )
+	hdf5_file.close( )
+
+	return new_path
+
+
+def perturb_testing( ):
+	from CNN_model import build_CNN_input, build_CNN_model
+
+	print("initializing test")
+	_, _, X, y, _, _ = build_CNN_input( testSet=False )
+	trained_1hotModel = build_CNN_model( '1hotVector', weight_path='./model_data/saved_weights/CNN_0.27.hdf5' )
+	trained_embedModel = build_CNN_model( 'embeddingMatrix',
+	                                      weight_path='./model_data/saved_weights/noembed_0.27.hdf5' )
+
+	subset_size = 1000
+
+	print("identifying an optimal subset of inputs (X,y) to perturb")
+
+	highprob_subset, (Xleftover, yleftover) = identify_highprob_subset( trained_1hotModel, X, y, subset_size,
+	                                                                    DEBUG=True )
+
+	print("mapping optimal inputs X from integer 1hot-vectors to real embedded matrices")
+	X_highprob_embeddings = get_embedding_matrices( trained_1hotModel, highprob_subset[0] )
+
+	print("perturbing data by minimizing negated cross entropy loss via SGD with L2 constraint between\n"
+	      "perturbed inputs and original inputs enforced")
+	retval = data_SGD( trained_embedModel, (X_highprob_embeddings, highprob_subset[1]), loss_func=binary_crossentropy,
+	                   num_epochs=5, batch_size=20, epsilon=0.001, DEBUG=True )
+
+	return retval

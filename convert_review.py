@@ -24,8 +24,6 @@ from preprocess import (generate_word_list, generate_char_list,
 TRAIN_LOW_RAM_CUTOFF = None
 DEV_LOW_RAM_CUTOFF = None
 
-
-
 # seed for consistency across calls
 random.seed(1515)
 
@@ -80,8 +78,6 @@ def build_design_matrix(vocab_size, use_words,
 	if verbose:
 		print("pickled data not found, building it...")
 
-
-
 	review_iterator = list()
 
 	if testing_phase:
@@ -95,7 +91,6 @@ def build_design_matrix(vocab_size, use_words,
 			print("building test data objects")
 			print("test data has no targets;\n"
 			      "so the targets vector will contain ID of review at that index")
-
 
 		for review_file in os.listdir(TESTDIR):
 			with open(os.path.join(TESTDIR, review_file)) as f:
@@ -288,7 +283,6 @@ def construct_designmatrix_pairs(VocabSize, useWords, skipTop=0, devSplit=None, 
 		X_dev = X_dev[:DEV_LOW_RAM_CUTOFF]
 		y_dev = y_dev[:DEV_LOW_RAM_CUTOFF]
 
-
 	trainPairs = [(x, y) for (x, y) in zip(X_train, y_train)]
 	devPairs = [(x, y) for (x, y) in zip(X_dev, y_dev)]
 
@@ -351,7 +345,6 @@ def construct_designmatrix_pairs(VocabSize, useWords, skipTop=0, devSplit=None, 
 	if verbose:
 		print("building pairs of dev design matrices and target vectors for negative movie reviews")
 
-
 	ndcombo = list(combinations(negDev, 2))
 	count = 0
 	random.shuffle(ndcombo)
@@ -365,7 +358,6 @@ def construct_designmatrix_pairs(VocabSize, useWords, skipTop=0, devSplit=None, 
 
 	if verbose:
 		print("building pairs of design matrices and target vectors for both pos and neg movie reviews")
-
 
 	allTrainCombo = list(combinations(trainPairs[:16000], 2))
 	count = 0
@@ -383,7 +375,6 @@ def construct_designmatrix_pairs(VocabSize, useWords, skipTop=0, devSplit=None, 
 
 	if verbose:
 		print("building pairs of dev design matrices and target vectors for both pos and neg movie reviews")
-
 
 	allDevCombo = list(combinations(devPairs[:2000], 2))
 	count = 0

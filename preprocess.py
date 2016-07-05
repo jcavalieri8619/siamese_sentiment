@@ -12,12 +12,6 @@ from nltk.probability import FreqDist, ConditionalFreqDist
 
 import modelParameters
 
-ALL_REVIEWS_PATH = './model_data/all_reviews.pickle'
-ALL_POS_REVIEWS_PATH = './model_data/all_pos_reviews.pickle'
-ALL_NEG_REVIEWS_PATH = './model_data/all_neg_reviews.pickle'
-WORD_ONE_HOT_PATH = './model_data/WORD_one_hot_{}.pickle'
-CHAR_ONE_HOT_PATH = './model_data/CHAR_one_hots_{}.pickle'
-SENTIMENT_2_REVIEWS_PATH = './model_data/sentmnt2review_map.pickle'
 
 TRAINPOS_DIR = './training_data/train/pos'
 TRAINNEG_DIR = './training_data/train/neg'
@@ -70,26 +64,27 @@ def sentiment2reviews_map():
 	positive reviews with 8 stars; similarly for negitive reviews
 	"""
 
-	if not os.path.exists(SENTIMENT_2_REVIEWS_PATH):
-		# reviews are grouped by rating into pos and neg maps as single strings
-		pos_files_map = collections.defaultdict(list)  # keys = [7, 8, 9, 10]
-		neg_files_map = collections.defaultdict(list)  # keys = [1, 2, 3, 4]
+	# reviews are grouped by rating into pos and neg maps as single strings
+	pos_files_map = collections.defaultdict( list )  # keys = [7, 8, 9, 10]
+	neg_files_map = collections.defaultdict( list )  # keys = [1, 2, 3, 4]
 
-		# note: review_file[-5] gets rating of review from training set
-		for review_file in os.listdir(TRAINPOS_DIR):
-			with open(os.path.join(TRAINPOS_DIR, review_file), 'r') as review:
-				stars = int(review_file[-5])
-				pos_files_map[stars if stars else 10]. \
-					append((strip_html_tags(review.read())))
+	# note: review_file[-5] gets rating of review from training set
+	for review_file in os.listdir( TRAINPOS_DIR ):
+		with open( os.path.join( TRAINPOS_DIR, review_file ), 'r' ) as review:
+			stars = int( review_file[-5] )
+			pos_files_map[stars if stars else 10]. \
+				append( (strip_html_tags( review.read( ) )) )
 
-		for review_file in os.listdir(TRAINNEG_DIR):
-			with open(os.path.join(TRAINNEG_DIR, review_file), 'r') as review:
-				neg_files_map[int(review_file[-5])]. \
-					append(strip_html_tags(review.read()))
+	for review_file in os.listdir( TRAINNEG_DIR ):
+		with open( os.path.join( TRAINNEG_DIR, review_file ), 'r' ) as review:
+			neg_files_map[int( review_file[-5] )]. \
+				append( strip_html_tags( review.read( ) ) )
 
-		sentiment2review_map = {"positive": pos_files_map, "negative": neg_files_map}
+	sentiment2review_map = { "positive": pos_files_map, "negative": neg_files_map }
 
-		# building cond freq dists
+	# building cond freq dists
+
+	if not os.path.exists( './model_data/CFD.pickle' ):
 		ratingCFD = ConditionalFreqDist()  # intel python may have nltk bug
 		# ratingCFD = collections.defaultdict(Counter)
 		for label, file_map in sentiment2review_map.iteritems():
@@ -102,13 +97,7 @@ def sentiment2reviews_map():
 		# no longer needed once pickled
 		del ratingCFD
 
-		# the pickled data is now a dictionary keyed by 'positive' and 'negative'
-		with open(SENTIMENT_2_REVIEWS_PATH, 'wb') as outfile:
-			pickle.dump(sentiment2review_map, outfile)
 
-	else:
-		with open(SENTIMENT_2_REVIEWS_PATH, 'rb') as infile:
-			sentiment2review_map = pickle.load(infile)
 
 	return sentiment2review_map
 
@@ -123,48 +112,29 @@ def concat_review_strings(verbose=True):
 	but no preprocessing done on review strings except strip html tags.
 	"""
 
-	if not os.path.exists(ALL_REVIEWS_PATH):
+	if verbose:
+		print( 'concatenting reviews' )
 
-		if verbose:
-			print('concatenting reviews')
+	sentiment2review_maps = sentiment2reviews_map( )
 
-		sentiment2review_maps = sentiment2reviews_map()
+	# all reviews are concatenated into one single string
+	all_reviews = ''
+	all_pos_reviews = ''
+	all_neg_reviews = ''
 
-		# all reviews are concatenated into one single string
-		all_reviews = ''
-		all_pos_reviews = ''
-		all_neg_reviews = ''
+	# sentiment2reviews is the dict with keys 'positive' and 'negative'
+	for stars in sentiment2review_maps['positive'].keys( ):
+		for reviews in sentiment2review_maps['positive'][stars]:
+			for review in reviews:
+				all_reviews += review
+				all_pos_reviews += review
 
-		# sentiment2reviews is the dict with keys 'positive' and 'negative'
-		for stars in sentiment2review_maps['positive'].keys():
-			for reviews in sentiment2review_maps['positive'][stars]:
-				for review in reviews:
-					all_reviews += review
-					all_pos_reviews += review
+	for stars in sentiment2review_maps['negative'].keys( ):
+		for reviews in sentiment2review_maps['negative'][stars]:
+			for review in reviews:
+				all_reviews += review
+				all_neg_reviews += review
 
-		for stars in sentiment2review_maps['negative'].keys():
-			for reviews in sentiment2review_maps['negative'][stars]:
-				for review in reviews:
-					all_reviews += review
-					all_neg_reviews += review
-
-		# concatenated review strings are pickled
-		with open(ALL_REVIEWS_PATH, 'wb') as output_file:
-			pickle.dump(all_reviews, output_file)
-		with open(ALL_NEG_REVIEWS_PATH, 'wb') as output_file:
-			pickle.dump(all_neg_reviews, output_file)
-		with open(ALL_POS_REVIEWS_PATH, 'wb') as output_file:
-			pickle.dump(all_pos_reviews, output_file)
-
-
-	else:
-
-		with open(ALL_REVIEWS_PATH, 'rb') as input_file:
-			all_reviews = pickle.load(input_file)
-		with open(ALL_NEG_REVIEWS_PATH, 'rb') as input_file:
-			all_neg_reviews = pickle.load(input_file)
-		with open(ALL_POS_REVIEWS_PATH, 'rb') as input_file:
-			all_pos_reviews = pickle.load(input_file)
 
 	# return dict so that 'all' maps to string of all concatenated reviews ect
 	return {'all': all_reviews, 'positive': all_pos_reviews,
@@ -184,57 +154,38 @@ def generate_one_hot_maps(vocab_size,
 	:return:
 	"""
 
-	if (use_words and not os.path.exists(WORD_ONE_HOT_PATH.format(vocab_size)) or
-			    not use_words and not os.path.exists(CHAR_ONE_HOT_PATH.format(vocab_size))):
+	if verbose:
+		print( 'building word to 1hot indices mapping' )
 
-		if verbose:
-			print('building word to 1hot indices mapping')
+	# concat_review_strings returns dictionary keyed by 'all', 'positive'
+	# and 'negative' so we access 'all' here because we need all_reviews string
 
-		# concat_review_strings returns dictionary keyed by 'all', 'positive'
-		# and 'negative' so we access 'all' here because we need all_reviews string
+	reviewstr_dict = concat_review_strings( )
+	all_reviews = reviewstr_dict['all']
 
-		reviewstr_dict = concat_review_strings()
-		all_reviews = reviewstr_dict['all']
-
-		if use_words:
-			list_normalized_all = generate_word_list(all_reviews)
+	if use_words:
+		list_normalized_all = generate_word_list( all_reviews )
 
 
-		else:
-			list_normalized_all = generate_char_list(all_reviews)
-			# using characters then no need to skip most frequent chars
-			skip_top = 0
-
-		_freq_dist = FreqDist(list_normalized_all)
-
-		# list of words starting from most frequent
-		# may skip some very freq via skiptop
-		# [ skip_top:(vocab_size+skip_top) ]
-
-		words_by_decreasingfreq = (_freq_dist.most_common()[skip_top:(vocab_size + skip_top)])
-
-		if verbose:
-			print(words_by_decreasingfreq[20:60])
-
-		one_hot_maps = collections.defaultdict(int)
-		for idx, (key, val) in enumerate(words_by_decreasingfreq[:vocab_size]):
-			one_hot_maps[key] = idx + modelParameters.UNK_INDEX + 1
-
-		if use_words:
-			with open(WORD_ONE_HOT_PATH.format(vocab_size), 'wb') as output_file:
-				pickle.dump(one_hot_maps, output_file)
-		else:
-			with open(CHAR_ONE_HOT_PATH.format(vocab_size), 'wb') as output_file:
-				pickle.dump(one_hot_maps, output_file)
-
-	# previously created one_hot_maps data is loaded if it exists
 	else:
-		if use_words:
-			with open(WORD_ONE_HOT_PATH.format(vocab_size), 'rb') as input_file:
-				one_hot_maps = pickle.load(input_file)
-		else:
-			with open(CHAR_ONE_HOT_PATH.format(vocab_size), 'rb') as input_file:
-				one_hot_maps = pickle.load(input_file)
+		list_normalized_all = generate_char_list( all_reviews )
+		# using characters then no need to skip most frequent chars
+		skip_top = 0
+
+	_freq_dist = FreqDist( list_normalized_all )
+
+	# list of words starting from most frequent
+	# may skip some very freq via skiptop
+	# [ skip_top:(vocab_size+skip_top) ]
+
+	words_by_decreasingfreq = (_freq_dist.most_common( )[skip_top:(vocab_size + skip_top)])
+
+	if verbose:
+		print( words_by_decreasingfreq[20:60] )
+
+	one_hot_maps = collections.defaultdict( int )
+	for idx, (key, val) in enumerate( words_by_decreasingfreq[:vocab_size] ):
+		one_hot_maps[key] = idx + modelParameters.UNK_INDEX + 1
 
 	return one_hot_maps
 
