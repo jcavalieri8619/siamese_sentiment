@@ -7,7 +7,6 @@ import copy
 import h5py
 import os
 import shutil
-from functools import reduce
 
 import keras.backend as K
 import numpy as np
@@ -159,19 +158,20 @@ def data_SGD( trained_model, optimal_subset, loss_func,
 				if DEBUG_MODE:
 					print(
 						"batched design matrix shape: {}".format(
-							batched_sharedvar_inputs[batch_itr].get_value( ).shape ))
+								batched_sharedvar_inputs[batch_itr].get_value( ).shape ))
 
 			# computes tensor difference then sums along the batch dimension to result in matrix so that matrix norm
 			# can be computed on the difference. this may only make sense for batch_size == 1 (on-line learning)
 			dimreduc_differene = T.sum( (batched_sharedvar_inputs[batch_itr] - batched_reg_inputs[batch_itr]),
 			                            axis=0, dtype=theano.config.floatX )
 
-			# negates the loss so that minimizing loss is actually maximixing loss and constrained the Frobenius
+			# negates the loss so that minimizing loss is actually maximixing loss and constrained the squared
+			# Frobenius
 			# norm between perturbed inputs and original inputs to be less than epsilon for small epsilon.
 			constrained_negated_loss = (-1 * loss_func( trained_model.targets[0], posClass_probability ) +
-			                            beta * lagrange_mult * (T.nlinalg.trace( T.dot( dimreduc_differene,
-			                                                                            dimreduc_differene ) )) -
-			                            epsilon ** 2)
+			                            beta * lagrange_mult *
+			                            (T.nlinalg.trace( T.dot( dimreduc_differene,
+			                                                     dimreduc_differene ) ) - epsilon ** 2))
 
 			total_cost = T.mean( constrained_negated_loss, dtype=theano.config.floatX, )
 
@@ -184,8 +184,11 @@ def data_SGD( trained_model, optimal_subset, loss_func,
 
 			num_gradients = len( trained_model.layers )
 
+			# backpropagate the loss wrt inputs
 			for itr in range( num_gradients - 1, 0, -1 ):
-				print("layer number: {}".format( itr ))
+				if DEBUG_MODE:
+					print("layer number: {}".format( itr ))
+
 				layer_output = trained_model.layers[itr].output
 
 				if layer_output.ndim == 0:
@@ -199,17 +202,19 @@ def data_SGD( trained_model, optimal_subset, loss_func,
 						print("layer_output.ndim == 1")
 
 				elif layer_output.ndim == 2:
+					# summing over batch dimension
 					element = theano.gradient.jacobian(
-							T.sum( layer_output, axis=1, dtype=theano.config.floatX, keepdims=False, ),
+							T.sum( layer_output, axis=0, dtype=theano.config.floatX, keepdims=False, ),
 							wrt=trained_model.layers[itr].input )
 					if DEBUG_MODE:
 						print("layer_output.ndim == 2")
 
 				elif layer_output.ndim == 3:
-					element = theano.gradient.jacobian(
-							T.sum( T.sum( layer_output, axis=2, dtype=theano.config.floatX, keepdims=False, ),
-							       axis=0, dtype=theano.config.floatX ),
-							wrt=trained_model.layers[itr].input )
+					element = theano.gradient.jacobian( expression=T.flatten( T.sum( layer_output, axis=0,
+					                                                                 dtype=theano.config.floatX,
+					                                                                 keepdims=False, ),
+					                                                          ),
+					                                    wrt=trained_model.layers[itr].input )
 
 					if DEBUG_MODE:
 						print("layer_output.ndim == 3")
@@ -218,14 +223,22 @@ def data_SGD( trained_model, optimal_subset, loss_func,
 
 				DlayerOut_DlayerIn.append( element )
 
-			Dcost_DX = reduce( T.dot, DlayerOut_DlayerIn, 1.0 )
+			# Dcost_DX = reduce( T.dot, DlayerOut_DlayerIn, 1.0 )
 
-			testFunc = theano.function( [trained_model.layers[0].input, trained_model.targets[0], K.learning_phase( )],
-			                            Dcost_Dlagrange, name="perturbTestFunc" )
+			layerGradients = []
+			i = 0
+			for elem in DlayerOut_DlayerIn:
+				f = theano.function( [trained_model.layers[0].input, K.learning_phase( )], [elem] )
+				layerGradients.append( f( batched_reg_inputs[i], 0 ) )
+				i += 1
 
-			Dlagrange = testFunc( batched_reg_inputs[batch_itr], targets[:20], 1 )
+			# testFunc = theano.function( [trained_model.layers[0].input, trained_model.targets[0], K.learning_phase(
+			#  )],
+			#                             Dcost_Dlagrange, name="perturbTestFunc" )
+			#
+			# Dlagrange = testFunc( batched_reg_inputs[batch_itr], targets[:20], 0 )
 
-			return Dlagrange, batched_sharedvar_inputs[batch_itr]
+			return layerGradients
 
 		# SGDtrain = theano.function(
 		# 		inputs=[trained_model.input, trained_model.targets[0], K.learning_phase()],
@@ -240,7 +253,7 @@ def data_SGD( trained_model, optimal_subset, loss_func,
 		# for pred, target, loss in zip(predictionVect, targets, lossVect):
 		# 	print("prediction {},target {}, loss {}\n".format(pred, target, loss))
 
-	return batched_sharedvar_inputs
+		# return batched_sharedvar_inputs
 
 
 def convert_1hotWeights_to_embedWeights( weight_path ):
@@ -313,6 +326,6 @@ def perturb_testing( ):
 	print("perturbing data by minimizing negated cross entropy loss via SGD with L2 constraint between\n"
 	      "perturbed inputs and original inputs enforced")
 	retval = data_SGD( trained_embedModel, (X_highprob_embeddings, highprob_subset[1]), loss_func=binary_crossentropy,
-	                   num_epochs=5, batch_size=20, epsilon=0.001, DEBUG=True )
+	                   num_epochs=5, batch_size=1, epsilon=0.001, DEBUG=True )
 
 	return retval

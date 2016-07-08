@@ -27,7 +27,9 @@ else:
 	maxReviewLen = modelParameters.MaxLen_c
 	skipTop = 0
 
-basename = "CNN"
+basename = "CNN_"
+additional_params = "regionSame+_"
+basename += additional_params
 suffix = datetime.datetime.now().strftime("%m%d_%I%M")
 filename = "_".join([basename, suffix])
 
@@ -58,7 +60,7 @@ embedding_dims = 300
 dense_dims1 = 1000
 dense_dims2 = 150
 dense_dims3 = 0
-num_epochs = 4
+num_epochs = 2
 
 
 def build_CNN_input(usewords=USEWORDS, skiptop=skipTop, devsplit=DEVSPLIT, verbose=True, **kwargs):
@@ -102,13 +104,20 @@ def build_CNN_model(inputType, is_IntermediateModel=False, weight_path=None, **k
 	:param kwargs:
 	:return:
 	"""
-	assert inputType in ['embeddingMatrix', '1hotVector'], "unknown input type"
 
-	if inputType == "1hotVector":
+	EMBEDDING_TYPE = 'embeddingMatrix'
+	ONEHOT_TYPE = '1hotVector'
+
+	defined_input_types = { EMBEDDING_TYPE, ONEHOT_TYPE }
+
+	assert inputType in defined_input_types, "unknown input type"
+
+	if inputType is ONEHOT_TYPE:
+
 
 		review_input = Input( shape=(maxReviewLen,), dtype='int32', name="1hot_review" )
 
-		sharedEmbedding = Embedding( VocabSize + 2, embedding_dims,
+		sharedEmbedding = Embedding( VocabSize + 1, embedding_dims,
 		                             input_length=maxReviewLen )
 
 		layer = sharedEmbedding( review_input )
@@ -120,12 +129,12 @@ def build_CNN_model(inputType, is_IntermediateModel=False, weight_path=None, **k
 
 	sharedConv1 = Convolution1D( nb_filter=num_filters1,
 	                             filter_length=filter_length1,
-	                             border_mode='valid',
+	                             border_mode='same',
 	                             activation='relu',
 	                             subsample_length=stride_len1,
 	                             init='uniform',
 	                             input_length=maxReviewLen,
-	                             batch_input_shape=(batch_size, maxReviewLen, embedding_dims) )
+	                             input_shape=(maxReviewLen, embedding_dims), name='ConvLayer1' )
 
 	layer = sharedConv1( layer, )
 
@@ -135,10 +144,10 @@ def build_CNN_model(inputType, is_IntermediateModel=False, weight_path=None, **k
 
 	sharedConv2 = Convolution1D( nb_filter=num_filters2,
 	                             filter_length=filter_length2,
-	                             border_mode='valid',
+	                             border_mode='same',
 	                             activation='relu',
 	                             subsample_length=stride_len2,
-	                             init='uniform'
+	                             init='uniform', name='ConvLayer2'
 	                             )
 
 	layer = sharedConv2( layer, )
@@ -149,10 +158,10 @@ def build_CNN_model(inputType, is_IntermediateModel=False, weight_path=None, **k
 
 	sharedConv3 = Convolution1D( nb_filter=num_filters3,
 	                             filter_length=filter_length3,
-	                             border_mode='valid',
+	                             border_mode='same',
 	                             activation='relu',
 	                             subsample_length=stride_len3,
-	                             init='uniform'
+	                             init='uniform', name='ConvLayer3'
 	                             )
 
 	layer = sharedConv3( layer, )
@@ -163,10 +172,10 @@ def build_CNN_model(inputType, is_IntermediateModel=False, weight_path=None, **k
 
 	sharedConv4 = Convolution1D( nb_filter=num_filters4,
 	                             filter_length=filter_length4,
-	                             border_mode='valid',
+	                             border_mode='same',
 	                             activation='relu',
 	                             subsample_length=stride_len4,
-	                             init='uniform', name='sharedConv4',
+	                             init='uniform', name='ConvLayer4',
 
 	                             )
 
@@ -182,14 +191,14 @@ def build_CNN_model(inputType, is_IntermediateModel=False, weight_path=None, **k
 	# for NLP tasks
 	# init='uniform'
 	sharedDense1 = Dense( dense_dims1, activation='relu',
-	                      W_regularizer=l2( l=0.001 ) )
+	                      W_regularizer=l2( l=0.001 ), name='denseLayer1', )
 
 	layer = sharedDense1( layer, )
 
 	layer = Dropout( 0.35 )( layer )
 
 	sharedDense2 = Dense( dense_dims2, activation='relu',
-	                      W_regularizer=l2( l=0.001 ) )
+	                      W_regularizer=l2( l=0.001 ), name='dense2_outputA' )
 
 	out_A = sharedDense2( layer, )
 
@@ -200,7 +209,7 @@ def build_CNN_model(inputType, is_IntermediateModel=False, weight_path=None, **k
 	else:
 
 		lastLayer = Dense( 1, activation='sigmoid',
-		                   W_regularizer=l2( l=0.001 ), name='out_B' )
+		                   W_regularizer=l2( l=0.001 ), name='dense3_outputB' )
 
 		out_B = lastLayer( out_A, )
 
