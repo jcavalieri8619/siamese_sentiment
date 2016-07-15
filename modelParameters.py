@@ -20,7 +20,7 @@ devcomboSize = int((trainingCount * float(devset_split) / 100) * float(87) / 43)
 UNK_INDEX = 0
 
 # TODO what is sane value for this?
-# margin used in contrastive loss function
+# margin used in contrastive loss_fn function
 Margin = 1.25
 
 # assuming full vocab is 85000; much higher in reality
