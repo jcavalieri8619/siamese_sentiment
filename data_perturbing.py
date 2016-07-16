@@ -8,12 +8,12 @@ import h5py
 import os
 import shutil
 
-import keras.backend as K
 import numpy as np
 import theano
 import theano.tensor as T
-from keras.objectives import constrained_norm_loss
 
+import keras.backend as K
+from keras.objectives import constrained_norm_loss
 from network_utils import get_network_layer_output
 
 
@@ -97,8 +97,8 @@ def identify_highprob_subset(model, X, y, subset_size, **kwargs):
 def data_SGD(trained_model, optimal_subset, loss_func,
              num_epochs, batch_size, epsilon, **kwargs):
     """
-    computes gradients of loss function wrt input data X--the loss function is designed to perturb the embedding
-    matrix X such that the loss can be arbitarily increased while maintaining the constrainst that the perturbed
+    computes gradients of loss_fn function wrt input data X--the loss_fn function is designed to perturb the embedding
+    matrix X such that the loss_fn can be arbitarily increased while maintaining the constrainst that the perturbed
     embedding matrix X_perturb is such that ||X_perturb - X|| < epsilon where X is the original unperturbed
     embedding matrix.
 
