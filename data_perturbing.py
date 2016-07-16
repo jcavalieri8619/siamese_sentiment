@@ -13,7 +13,7 @@ import theano
 import theano.tensor as T
 
 import keras.backend as K
-from keras.objectives import constrained_norm_loss
+from keras.objectives import constrained_loss
 from network_utils import get_network_layer_output
 
 
@@ -24,10 +24,10 @@ def get_embedding_matrices(model, X):
 def identify_highprob_subset(model, X, y, subset_size, **kwargs):
     """
 
-    :param model: trained CNN model with inputType 1hotVectors
-    :param X: design matrix
-    :param y: targets vector
-    :param subset_size: subset size of correctly predicted inputs w/ high probability
+    :embedW model: trained CNN model with inputType 1hotVectors
+    :embedW X: design matrix
+    :embedW y: targets vector
+    :embedW subset_size: subset size of correctly predicted inputs w/ high probability
     :return: tuple with matrix of shape (subset_size,maxreviewLength) representing high probability inputs and
             remaining data pairs not included in high prob subset
     """
@@ -102,13 +102,13 @@ def data_SGD(trained_model, optimal_subset, loss_func,
     embedding matrix X_perturb is such that ||X_perturb - X|| < epsilon where X is the original unperturbed
     embedding matrix.
 
-    :param trained_model: trained CNN model with inputType embeddingMatrix
-    :param optimal_subset: set of pairs (X,y=1) not seen during training such that Prob{ y = 1 | CNN(X) } is approx 1
-    :param loss_func: objective function: f(ytrue,ypred) i.e. cross entropy, SSE, ...
-    :param num_epochs: number of epochs to perturb data
-    :param batch_size: number of examples to perturb per batch of SGD
-    :param epsilon: || X_perturb - X || < epsilon
-    :param kwargs:
+    :embedW trained_model: trained CNN model with inputType embeddingMatrix
+    :embedW optimal_subset: set of pairs (X,y=1) not seen during training such that Prob{ y = 1 | CNN(X) } is approx 1
+    :embedW loss_func: objective function: f(ytrue,ypred) i.e. cross entropy, SSE, ...
+    :embedW num_epochs: number of epochs to perturb data
+    :embedW batch_size: number of examples to perturb per batch of SGD
+    :embedW epsilon: || X_perturb - X || < epsilon
+    :embedW kwargs:
     :return: perturbed embedding matrix
     """
 
@@ -249,7 +249,7 @@ def data_SGD(trained_model, optimal_subset, loss_func,
         return batched_sharedvar_inputs, layerGradients_epoch
 
 
-def convert_1hotWeights_to_embedWeights(weight_path):
+def _convert_1hotWeights_to_embedWeights(weight_path):
     """
     the CNN model is always trained with input type 1hotVector because the model accepts
     movie reviews and these are naturally vectors with integer elements not real matrices so the
@@ -258,7 +258,7 @@ def convert_1hotWeights_to_embedWeights(weight_path):
     saved weights from 1hotVector type models are modified to accept a matrix as input and start
     with a convolutional layer.
 
-    :param weight_path:
+    :embedW weight_path:
     :return:
     """
 
@@ -297,58 +297,90 @@ def convert_1hotWeights_to_embedWeights(weight_path):
     return new_path
 
 
-def perturb_data(model, optimal_subset, loss_func, optimizer, numEpochs, beta, epsilon, invertTargets, negateLoss):
+def perturb_data(model, optimal_subset, loss_func, optimizer, numEpochs, batchSize,
+                 constrainWeight, epsilon, invertTargets, negateLoss):
     """
+    the model parameter is pre-trained model that minimizes loss. By freezing the weights of all layers except the
+    embedding layer and training with either inverted target vector or negated loss, we can perturb the embedding
+    layer weights to the input data as a perturbed embedding matrix--the one-hot vector input type cannot be
+    perturbed because its values are integers whereas the embedding matrix is real. The embedding layer weight
+    matrix functions as a lookup-table so that each row corresponds to a one-hot index--by perturbing the
+    weight matrix/lookup-table we can construct perturbed embedding matrix inputs using the original one-hot vector
+    input types and mapping them to perturbed embedding matrix input types via the perturbed
+    weight matrix/lookup-table
 
+    :param model:
     :param optimal_subset:
-    :param trained_model:
+    :param loss_func:
+    :param optimizer:
+    :param numEpochs:
+    :param constrainWeight:
+    :param epsilon:
+    :param invertTargets:
+    :param negateLoss:
     :return:
     """
-    # from CNN_model import  build_CNN_model
-    #
-    # model = build_CNN_model('1hotVector',weight_path=weight_path_)
 
+    from operator import neg
 
+    def constrain_fn(embedW, embedW_orig, eps):
+        return K.T.nlinalg.trace(K.dot(K.transpose(embedW_orig - embedW), embedW_orig - embedW)) - eps
+
+    # freeze the weights of every layer except embedding layer
     for L in model.layers:
         if L.name is not 'embeddingLayer':
             L.trainable = False
 
     assert model.layers[1].trainable is True, "embedding layer must be trainable"
 
-    constrainedLoss = constrained_norm_loss(loss_func, model.layers[1].W, model.layers[1].W.get_value(),
-                                            beta, epsilon, negateLoss)
+    constrain_fn_args = [model.layers[1].W, model.layers[1].W.get_value(), epsilon]
 
-    model.compile(optimizer=optimizer, loss=constrainedLoss, )
+    loss = constrained_loss((lambda ytru, ypred: neg(loss_func(ytru, ypred)) if negateLoss else loss_func(ytru, ypred)),
+                            constrain_fn, constrain_fn_args, init='uniform',
+                            constraint_weight=constrainWeight)
+
+    model.compile(optimizer=optimizer, loss=loss, )
 
     targets = optimal_subset[1]
+    onehotVectors = optimal_subset[0]
 
     if invertTargets:
         targets = np.logical_not(targets)
 
-    model.fit(optimal_subset[0], targets, nb_epoch=numEpochs, batch_size=20, )
+    model.fit(onehotVectors, targets, nb_epoch=numEpochs, batch_size=batchSize, )
 
     return model
 
 
-def perturb_testing(loss_fn, optimizer, invertTargets, negateLoss, numEpochs, beta=1.0, epsilon=0.0, ):
+def perturb_testing(loss_fn, optimizer, invertTargets, negateLoss, numEpochs, batchSize, subset_size,
+                    weightPath, constrainWeight=1.0, epsilon=0.0, ):
+    """
+
+    :param loss_fn:
+    :param optimizer:
+    :param invertTargets:
+    :param negateLoss:
+    :param numEpochs:
+    :param batchSize:
+    :param subset_size:
+    :param weightPath:
+    :param constrainWeight:
+    :param epsilon:
+    :return:
+    """
     from CNN_model import build_CNN_input, build_CNN_model
 
-    print("initializing test")
+    print("gathering model inputs")
     _, _, X, y, _, _ = build_CNN_input(testSet=False)
-
-    weightPath = '/home/jcavalie/PycharmProjects/siamese_sentiment_/model_data/saved_weights/CNN_regionSame' \
-                 '+__0709_0201_W.01-0.345.hdf5'
 
     trained_1hotModel = build_CNN_model('1hotVector', weight_path=weightPath)
     trained_model_orig = build_CNN_model('1hotVector', weight_path=weightPath)
 
-    subset_size = 1000
-
-    print("identifying an optimal subset of inputs (X,y) to perturb")
+    print("identifying an optimal subset of inputs (X,y=1) to perturb")
 
     highprob_subset, _ = identify_highprob_subset(trained_1hotModel, X, y, subset_size, DEBUG=True)
 
-    perturb_data(trained_1hotModel, highprob_subset, loss_fn, optimizer, numEpochs, beta, epsilon, invertTargets,
-                 negateLoss)
+    perturb_data(trained_1hotModel, highprob_subset, loss_fn, optimizer, numEpochs,
+                 batchSize, constrainWeight, epsilon, invertTargets, negateLoss)
 
     return trained_1hotModel, trained_model_orig, highprob_subset
