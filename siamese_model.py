@@ -7,15 +7,14 @@ from __future__ import print_function
 import datetime
 import os
 
+import modelParameters
+from CNN_model import build_CNN_model
+from convert_review import construct_designmatrix_pairs
 from keras.callbacks import ModelCheckpoint, EarlyStopping
 from keras.engine.topology import merge
 from keras.layers import Input
 from keras.layers.core import (Dense)
 from keras.models import Model
-
-import modelParameters
-from CNN_model import build_CNN_model
-from convert_review import construct_designmatrix_pairs
 from loss_functions import contrastiveLoss
 from siamese_activations import vectorDifference, squaredl2
 
@@ -37,31 +36,6 @@ filename = "_".join([basename, suffix])
 
 batch_size = 20
 
-num_filters1 = 800
-filter_length1 = 2
-stride_len1 = 1
-pool_len1 = 2
-
-num_filters2 = 600
-filter_length2 = 3
-stride_len2 = 1
-pool_len2 = 2
-
-num_filters3 = 400
-filter_length3 = 4
-stride_len3 = 1
-pool_len3 = 2
-
-num_filters4 = 400
-filter_length4 = 5
-stride_len4 = 1
-pool_len4 = 2
-
-embedding_dims = 300
-
-dense_dims1 = 1000
-dense_dims2 = 300
-dense_dims3 = 0
 num_epochs = 4
 
 
@@ -124,8 +98,8 @@ def build_siamese_model(weight_path=None, verbose=True, **kwargs):
     Lreview = Input(shape=(maxReviewLen,), dtype='int32', name="Lreview")
     Rreview = Input(shape=(maxReviewLen,), dtype='int32', name="Rreview")
 
-    rightbranch = CNN_model([Rreview], )
-    leftbranch = CNN_model([Lreview], )
+    rightbranch = CNN_model([Lreview])
+    leftbranch = CNN_model([Rreview])
 
     # first take the difference of the final feature representations from the CNN_model
     # represented by leftbranch and rightbranch
@@ -140,11 +114,7 @@ def build_siamese_model(weight_path=None, verbose=True, **kwargs):
     siamese_model = Model(input=[Lreview, Rreview], output=energy,
                           name="siamese_model")
 
-    # TODO SGD is used in Lecunns paper; I am using RMSPROP instead for now
-    # sgd = SGD( lr = 0.001, momentum = 0.0, decay = 0.0, nesterov = False )
-
-
-    siamese_model.compile(optimizer='rmsprop', loss=contrastiveLoss, )
+    siamese_model.compile(optimizer='adam', loss=contrastiveLoss, )
 
     return {'siamese': siamese_model, 'CNN': CNN_model}
 
@@ -170,71 +140,41 @@ def train_siamese_model(model, trainingSets, devSets):
     checkpoint = ModelCheckpoint(weightPath + '_W.{epoch:02d}-{val_loss_fn:.2f}.hdf5',
                                  verbose=1, monitor='val_loss_fn', save_best_only=True)
 
-    earlyStop = EarlyStopping(patience=1, verbose=1)
+    earlyStop = EarlyStopping(patience=1, verbose=1, monitor='val_loss_fn')
 
     call_backs = [checkpoint, earlyStop]
 
+    # todo pass actual siamese model in as arg not the dictionary containing both models
+
+    hist = model['siamese'].fit({'Lreview': X_left, 'Rreview': X_right,},
+                                {'energy_output': similarity},
+                                batch_size=batch_size,
+                                nb_epoch=num_epochs,
+                                verbose=1,
+                                validation_data=
+                                ({'Lreview': Xdev_left, 'Rreview': Xdev_right,},
+                                 {'energy_output': dev_similarity}),
+                                callbacks=call_backs)
+
     try:
-        hist = model['siamese'].fit({'Lreview': X_left, 'Rreview': X_right,},
-                                    {'energy_output': similarity},
-                                    batch_size=batch_size,
-                                    nb_epoch=num_epochs,
-                                    verbose=1,
-                                    validation_data=
-                                    ({'Lreview': Xdev_left, 'Rreview': Xdev_right,},
-                                     {'energy_output': dev_similarity}),
-                                    callbacks=call_backs)
-
-        try:
-            with open(os.path.join(modelParameters.SPECS_PATH, filename + '.json'), 'w') as f:
-                f.write(model['siamese'].to_json())
-        except:
-            print("error writing model json")
-            pass
-
-        try:
-            with open(os.path.join(modelParameters.SPECS_PATH, filename) + '.hist', 'w') as f:
-                f.write(str(hist.history))
-        except:
-            print("error writing training history")
-            pass
-
-    except KeyboardInterrupt:
-        pass
+        with open(os.path.join(modelParameters.SPECS_PATH, filename + '.json'), 'w') as f:
+            f.write(model['siamese'].to_json())
     except:
-        raise
+        print("error writing model json")
+        pass
 
-    finally:
+    try:
+        with open(os.path.join(modelParameters.SPECS_PATH, filename) + '.hist', 'w') as f:
+            f.write(str(hist.history))
+    except:
+        print("error writing training history")
+        pass
 
+    try:
         with open(os.path.join(modelParameters.SPECS_PATH, filename) + '.config', 'w') as f:
             f.write(str(model['siamese'].get_config()))
-
-        with open(os.path.join(modelParameters.SPECS_PATH, filename) + '.specs', 'w') as f:
-            specs = """model: {}\nbatch_size: {}\nembedding_dims: {}\ncontrast_margin: {}\n
-			num_filters1: {}\nfilter_length1: {}\npool_len1: {}\n
-			num_filters2: {}\nfilter_length2: {}\npool_len2: {}\n
-			num_filters3: {}\nfilter_length3: {}\npool_len3: {}\n
-			num_filters4: {}\nfilter_length4: {}\npool_len4: {}\n
-			dense_dims1: {}\ndense_dims2: {}\ndense_dims3: {}\n""".format(basename,
-                                                                          batch_size,
-                                                                          embedding_dims,
-                                                                          modelParameters.Margin,
-                                                                          num_filters1,
-                                                                          filter_length1,
-                                                                          pool_len1,
-                                                                          num_filters2,
-                                                                          filter_length2,
-                                                                          pool_len2,
-                                                                          num_filters3,
-                                                                          filter_length3,
-                                                                          pool_len3,
-                                                                          num_filters4,
-                                                                          filter_length4,
-                                                                          pool_len4,
-                                                                          dense_dims1,
-                                                                          dense_dims2,
-                                                                          dense_dims3
-                                                                          )
-            f.write(specs)
+    except:
+        print("error writing config")
+        pass
 
     return hist

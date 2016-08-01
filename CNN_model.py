@@ -3,39 +3,26 @@ from __future__ import print_function
 import datetime
 import os
 
+from keras.activations import sigmoid
 from keras.callbacks import ModelCheckpoint, EarlyStopping
 from keras.layers import Input
 from keras.layers.convolutional import Convolution1D, MaxPooling1D
-from keras.layers.core import (Dense, Dropout,
-                               Flatten)
+from keras.layers.core import (Dense, Dropout, Flatten)
 from keras.layers.embeddings import Embedding
 from keras.models import Model
 from keras.objectives import binary_crossentropy
-from keras.optimizers import rmsprop
-from keras.regularizers import l2
 
 import modelParameters
 from convert_review import build_design_matrix
 
-DEVSPLIT = modelParameters.devset_split
-USEWORDS = True
-
-if USEWORDS:
-    VocabSize = modelParameters.VocabSize_w
-    maxReviewLen = modelParameters.MaxLen_w
-    skipTop = modelParameters.skip_top
-else:
-    VocabSize = modelParameters.VocabSize_c
-    maxReviewLen = modelParameters.MaxLen_c
-    skipTop = 0
-
 basename = "CNN_"
-additional_params = "regionSame+_"
-basename += additional_params
 suffix = datetime.datetime.now().strftime("%m%d_%I%M")
 filename = "_".join([basename, suffix])
 
-batch_size = 197
+disconnected = 'disconnected_layer'
+
+batch_size = 80
+region = 'same'
 
 num_filters1 = 1300
 filter_length1 = 2
@@ -57,22 +44,25 @@ filter_length4 = 5
 stride_len4 = 1
 pool_len4 = 2
 
-embedding_dims = 300
+embedding_dims = 200
 
-dense_dims1 = 2000
+dense_dims1 = 1250
 dense_dims2 = 800
-dense_dims3 = 300
-num_epochs = 5
+dense_dims3 = 250
+num_epochs = 4
 
 
-def build_CNN_input(usewords=USEWORDS, skiptop=skipTop, devsplit=DEVSPLIT, verbose=True, **kwargs):
+def build_CNN_input(vocab_size=modelParameters.VocabSize_w, usewords=True,
+                    skiptop=modelParameters.skip_top,
+                    devsplit=modelParameters.devset_split, verbose=True, **kwargs):
     """
 
+    :param vocab_size:
     :param usewords:
     :param skiptop:
     :param devsplit:
     :param verbose:
-    :param kwargs: testSet=False to generate train and dev sets but not validation set; defaults to True
+    :param kwargs:
     :return:
     """
 
@@ -80,22 +70,24 @@ def build_CNN_input(usewords=USEWORDS, skiptop=skipTop, devsplit=DEVSPLIT, verbo
         print('Building CNN Inputs')
 
     createValSet = kwargs.get('createValSet', True)
+    DEBUG = kwargs.get("DEBUG", None)
 
-    ((X_train, y_train), (X_dev, y_dev), (X_test, y_test)) = build_design_matrix(VocabSize,
-                                                                                 use_words=usewords,
-                                                                                 skip_top=skiptop,
-                                                                                 dev_split=devsplit,
-                                                                                 createValidationSet=createValSet
-                                                                                 )
+    ((X_train, y_train), (X_dev, y_dev), (X_val, y_val)) = build_design_matrix(vocab_size=vocab_size,
+                                                                               use_words=usewords,
+                                                                               skip_top=skiptop,
+                                                                               dev_split=devsplit,
+                                                                               createValidationSet=createValSet,
+                                                                               DEBUG=DEBUG
+                                                                               )
     if verbose:
         print('X_train shape: {}'.format(X_train.shape))
         print('X_dev shape: {}'.format(X_dev.shape))
-        print('X_test shape: {}'.format(X_test.shape))
+        print('X_test shape: {}'.format(X_val.shape))
         print('y_train shape: {}'.format(y_train.shape))
         print('y_dev shape: {}'.format(y_dev.shape))
-        print('y_test shape: {}'.format(y_test.shape))
+        print('y_test shape: {}'.format(y_val.shape))
 
-    return X_train, y_train, X_dev, y_dev, X_test, y_test
+    return X_train, y_train, X_dev, y_dev, X_val, y_val
 
 
 def build_CNN_model(inputType, loss_func=None, optimize_proc=None,
@@ -120,67 +112,70 @@ def build_CNN_model(inputType, loss_func=None, optimize_proc=None,
 
     if inputType is ONEHOT_TYPE:
 
-        review_input = Input(shape=(maxReviewLen,), dtype='int32', name="1hot_review")
+        review_input = Input(shape=(modelParameters.MaxLen_w,), dtype='int32', name="1hot_review")
 
-        sharedEmbedding = Embedding(VocabSize + 1, embedding_dims,
-                                    input_length=maxReviewLen, name='embeddingLayer')
+        sharedEmbedding = Embedding(modelParameters.VocabSize_w + 3, embedding_dims,
+                                    input_length=modelParameters.MaxLen_w, name='embeddingLayer')
 
         layer = sharedEmbedding(review_input)
 
-
     else:
-        review_input = Input(shape=(maxReviewLen, embedding_dims), dtype="float32", name="embedding_review")
+        review_input = Input(shape=(modelParameters.MaxLen_w, embedding_dims), dtype="float32", name="embedding_review")
         layer = review_input
 
     sharedConv1 = Convolution1D(nb_filter=num_filters1,
                                 filter_length=filter_length1,
-                                border_mode='same',
+                                border_mode=region,
                                 activation='relu',
-                                subsample_length=stride_len1,
                                 init='uniform',
-                                input_length=maxReviewLen,
-                                input_shape=(maxReviewLen, embedding_dims), name='ConvLayer1')
+                                subsample_length=stride_len1,
+                                input_length=modelParameters.MaxLen_w,
+                                input_shape=(modelParameters.MaxLen_w, embedding_dims),
+                                name='ConvLayer1')
 
     layer = sharedConv1(layer, )
 
     layer = Dropout(0.25, )(layer)
 
-    layer = MaxPooling1D(pool_length=2)(layer)
+    layer = MaxPooling1D()(layer)
 
     sharedConv2 = Convolution1D(nb_filter=num_filters2,
                                 filter_length=filter_length2,
-                                border_mode='same',
+                                border_mode=region,
                                 activation='relu',
+                                init='uniform',
                                 subsample_length=stride_len2,
-                                init='uniform', name='ConvLayer2'
+                                name='ConvLayer2'
                                 )
 
     layer = sharedConv2(layer, )
 
     layer = Dropout(0.30)(layer)
 
-    layer = MaxPooling1D(pool_length=2)(layer)
+    layer = MaxPooling1D()(layer)
 
     sharedConv3 = Convolution1D(nb_filter=num_filters3,
-                                filter_length=filter_length3,
-                                border_mode='same',
+                                filter_length=num_filters3,
+                                border_mode=region,
                                 activation='relu',
+                                init='uniform',
                                 subsample_length=stride_len3,
-                                init='uniform', name='ConvLayer3'
+                                name='ConvLayer3'
                                 )
 
     layer = sharedConv3(layer, )
 
     layer = Dropout(0.35)(layer)
 
-    layer = MaxPooling1D(pool_length=2)(layer)
+    layer = MaxPooling1D()(layer)
 
     sharedConv4 = Convolution1D(nb_filter=num_filters4,
                                 filter_length=filter_length4,
-                                border_mode='same',
+                                border_mode=region,
                                 activation='relu',
+                                init='uniform',
                                 subsample_length=stride_len4,
-                                init='uniform', name='ConvLayer4',
+                                name='ConvLayer4',
 
                                 )
 
@@ -188,26 +183,25 @@ def build_CNN_model(inputType, loss_func=None, optimize_proc=None,
 
     layer = Dropout(0.35)(layer)
 
-    layer = MaxPooling1D(pool_length=2)(layer)
+    layer = MaxPooling1D()(layer)
 
     layer = Flatten()(layer)
 
-    # Dense layers default to 'glorot_normal' for init weights but that may not be optimal
-    # for NLP tasks
-    # init='uniform'
     sharedDense1 = Dense(dense_dims1, activation='relu',
-                         W_regularizer=l2(l=0.001), name='denseLayer1', )
+                         name='denseLayer1', )
 
-    layer = sharedDense1(layer, )
+    layer = sharedDense1(layer)
 
     layer = Dropout(0.35)(layer)
 
-    sharedDense2 = Dense(dense_dims2, activation='relu', W_regularizer=l2(l=0.001), name='denseLayer2')
-
+    sharedDense2 = Dense(dense_dims2, activation='relu',
+                         name='denseLayer2')
     layer = sharedDense2(layer)
 
+    layer = Dropout(0.35)(layer)
+
     sharedDense3 = Dense(dense_dims3, activation='relu',
-                         W_regularizer=l2(l=0.001), name='dense2_outputA')
+                         name='dense2_outputA')
 
     out_A = sharedDense3(layer, )
 
@@ -215,20 +209,22 @@ def build_CNN_model(inputType, loss_func=None, optimize_proc=None,
         CNN_model = Model(input=[review_input], output=out_A, name="CNN_model")
         return CNN_model
 
-    else:
+    out_A = Dropout(0.20)(out_A)
 
-        lastLayer = Dense(1, activation='sigmoid',
-                          W_regularizer=l2(l=0.001), name='dense3_outputB')
+    sidmoidLayer = Dense(1, activation=sigmoid,
+                         name='output_B')
 
-        out_B = lastLayer(out_A, )
+    out_B = sidmoidLayer(out_A, )
 
-        CNN_model = Model(input=[review_input], output=out_B, name="CNN_model")
+    CNN_model = Model(input=[review_input], output=[out_B], name="CNN_model")
 
-        optimizer = optimize_proc if optimize_proc else rmsprop
-        CNN_model.compile(optimizer=optimizer(), loss=loss_func if loss_func else binary_crossentropy)
+    loss = loss_func if loss_func else binary_crossentropy
+    optimizer = optimize_proc if optimize_proc else 'adam'
 
-        if weight_path is not None:
-            CNN_model.load_weights(weight_path)
+    CNN_model.compile(optimizer=optimizer, loss=loss)
+
+    if weight_path is not None:
+        CNN_model.load_weights(weight_path)
 
     return CNN_model
 
@@ -245,8 +241,8 @@ def train_CNN_model(model, X_train, y_train, X_dev, y_dev):
     """
     weightPath = os.path.join(modelParameters.WEIGHT_PATH, filename)
     checkpoint = ModelCheckpoint(weightPath + '_W.{epoch:02d}-{val_loss:.3f}.hdf5',
-                                 verbose=1, save_best_only=True)
-    earlyStop = EarlyStopping(patience=1, verbose=1)
+                                 verbose=1, save_best_only=True, monitor='val_loss')
+    earlyStop = EarlyStopping(patience=1, verbose=1, monitor='val_loss')
 
     call_backs = [checkpoint, earlyStop]
 
@@ -265,12 +261,13 @@ def train_CNN_model(model, X_train, y_train, X_dev, y_dev):
         f.write(str(hist.history))
 
     with open(os.path.join(modelParameters.SPECS_PATH, filename) + '.specs', 'w') as f:
-        specs = """model: {}\nbatch_size: {}\nembedding_dims: {}\n
-    			num_filters1: {}\nfilter_length1: {}\npool_len1: {}\n
-    			num_filters2: {}\nfilter_length2: {}\npool_len2: {}\n
-    			num_filters3: {}\nfilter_length3: {}\npool_len3: {}\n
-    			num_filters4: {}\nfilter_length4: {}\npool_len4: {}\n
-    			dense_dims1: {}\ndense_dims2: {}\ndense_dims3: {}\n""".format(basename,
+        specs = """model: {}\nborder_mode: {}\nbatch_size: {}\nembedding_dims: {}\n
+                num_filters1: {}\nfilter_length1: {}\npool_len1: {}\n
+                num_filters2: {}\nfilter_length2: {}\npool_len2: {}\n
+                num_filters3: {}\nfilter_length3: {}\npool_len3: {}\n
+                num_filters4: {}\nfilter_length4: {}\npool_len4: {}\n
+                dense_dims1: {}\ndense_dims2: {}\ndense_dims3: {}\n""".format(basename,
+                                                                              region,
                                                                               batch_size,
                                                                               embedding_dims,
                                                                               num_filters1,

@@ -13,7 +13,8 @@ from itertools import combinations
 import numpy
 
 import modelParameters
-from preprocess import (generate_word_list, generate_char_list,
+from keras.preprocessing.text import one_hot
+from preprocess import (generate_char_list,generate_word_list,
                         generate_one_hot_maps, sentiment2reviews_map)
 
 # if your computer cannot generate all the pairs of input data
@@ -25,10 +26,12 @@ TRAIN_LOW_RAM_CUTOFF = None
 DEV_LOW_RAM_CUTOFF = None
 
 # seed for consistency across calls
-random.seed(1515)
+numpy.random.seed(113)
+
+RECONSTRUCTED_REVIEWS_PATH = "./model_data/reconstructed_reviews.txt"
 
 
-def to_onehot_vector(reviewObject, one_hot_maps, use_words, skip_top=0, maxlen=None, **kwargs):
+def to_onehot_vector(reviewObject, one_hot_maps, use_words, maxlen=None, **kwargs):
     """
 
     :param reviewObject: tuple containing rating and movie review
@@ -41,21 +44,45 @@ def to_onehot_vector(reviewObject, one_hot_maps, use_words, skip_top=0, maxlen=N
     """
     rating, review = reviewObject
 
+    MAXlen = (maxlen if maxlen is not None else
+              modelParameters.MaxLen_w if use_words else
+              modelParameters.MaxLen_c)
+
     if use_words:
-        MAXlen = maxlen if maxlen is not None else modelParameters.MaxLen_w
         vector_of_onehots = numpy.zeros((1, MAXlen), dtype='int32')
-        vector_of_onehots += modelParameters.UNK_INDEX
         for indx, word in enumerate(generate_word_list(review)[:MAXlen]):
-            vector_of_onehots[0, indx] = one_hot_maps[word]
+            one_hot_maps.get(word, modelParameters.UNK_INDEX)
 
     else:
-        MAXlen = maxlen if maxlen is not None else modelParameters.MaxLen_c
-        vector_of_onehots = numpy.zeros((1, maxlen), dtype='int32')
-        vector_of_onehots += modelParameters.UNK_INDEX
+        vector_of_onehots = numpy.zeros((1, MAXlen), dtype='int32')
         for indx, char in enumerate(generate_char_list(review)[:MAXlen]):
-            vector_of_onehots[0, indx] = one_hot_maps[char]
+            vector_of_onehots[0, indx] = one_hot_maps.get(char, modelParameters.UNK_INDEX)
 
-    return (vector_of_onehots, rating)
+    return vector_of_onehots, rating
+
+
+def reconstruct_reviews_from_designMatrix(designMatrix, targets, onehot_maps, ):
+    """
+
+    :param designMatrix:
+    :param targets:
+    :param onehot_maps:
+    :return:
+    """
+    inverted_onehots = dict([(indx, wrd) for wrd, indx in onehot_maps.iteritems()])
+    inverted_onehots[0] = '_PAD_'
+    inverted_onehots[1] = 'UNK'
+
+    with open(RECONSTRUCTED_REVIEWS_PATH, 'w') as f:
+        for (onehot_vector, label) in zip(designMatrix, targets):
+            f.write("POSITIVE_REVIEW:\n" if label else "NEGATIVE_REVIEW:\n")
+            for count, onehot_index in enumerate(onehot_vector):
+                f.write(inverted_onehots[onehot_index])
+                if not (count + 1) % 60:
+                    f.write("\n")
+                else:
+                    f.write(" ")
+            f.write('\n' * 2)
 
 
 def build_design_matrix(vocab_size, use_words,
@@ -73,12 +100,14 @@ def build_design_matrix(vocab_size, use_words,
     :param kwargs:
     :return: tuple returning design matrix and target for requested data sets: training,dev,validation
     """
-    testing_phase = kwargs.get('test_data', None)
-
-    if verbose:
-        print("pickled data not found, building it...")
 
     review_iterator = list()
+
+    MAXlen = (maxlen if maxlen is not None else
+              modelParameters.MaxLen_w if use_words else
+              modelParameters.MaxLen_c)
+
+    testing_phase = kwargs.get('test_data', None)
 
     if testing_phase:
         # this test data is from kaggle competition and it consists of movie reviews and movie IDs
@@ -102,16 +131,14 @@ def build_design_matrix(vocab_size, use_words,
                 print("building TEST word design matrix")
 
             designMatrix = numpy.zeros((modelParameters.testingCount,
-                                        (maxlen if maxlen is not None
-                                         else modelParameters.MaxLen_w)), dtype='int32')
+                                        MAXlen), dtype='int32')
 
         else:
             if verbose:
                 print("building TEST char design matrix")
 
             designMatrix = numpy.zeros((modelParameters.testingCount,
-                                        (maxlen if maxlen is not None
-                                         else modelParameters.MaxLen_c)), dtype='int32')
+                                        MAXlen), dtype='int32')
 
         # for test data targets vector will hold review IDs; not ratings
         targets = numpy.zeros((modelParameters.testingCount, 1))
@@ -121,44 +148,34 @@ def build_design_matrix(vocab_size, use_words,
     else:
         # building TRAINING data
 
-        sentiment_reviews = sentiment2reviews_map()
-
-        if use_words:
-            if verbose:
+        if verbose:
+            if use_words:
                 print("building TRAINING word design matrix")
 
-            designMatrix = numpy.zeros((modelParameters.trainingCount,
-                                        (maxlen if maxlen is not None
-                                         else modelParameters.MaxLen_w)), dtype='int32')
-        else:
-            if verbose:
+            else:
                 print("building TRAINING char design matrix")
 
-            designMatrix = numpy.zeros((modelParameters.trainingCount,
-                                        (maxlen if maxlen is not None
-                                         else modelParameters.MaxLen_c)), dtype='int32')
+        sentiment_reviews = sentiment2reviews_map()
 
-        targets = numpy.zeros((modelParameters.trainingCount, 1), dtype='int32')
+        designMatrix = numpy.zeros((modelParameters.trainingCount,
+                                    MAXlen), dtype='int32')
+
+        targets = numpy.zeros((modelParameters.trainingCount, 1), dtype='float32')
 
         for label, file_map in sentiment_reviews.iteritems():
             for stars, reviewList in file_map.iteritems():
                 for review in reviewList:
                     review_iterator.append((stars, review))
 
-        random.shuffle(review_iterator)
+        numpy.random.shuffle(review_iterator)
 
     # now in common area where both test and training phase will execute
 
-    word2index_mapping = generate_one_hot_maps(vocab_size, skip_top, use_words)
-
-    MAXlen = (maxlen if maxlen is not None else
-              modelParameters.MaxLen_w if use_words else
-              modelParameters.MaxLen_c)
+    word2index_mapping = generate_one_hot_maps(vocab_size, skip_top, use_words, kwargs.get("DEBUG"))
 
     func_to_one_hot = partial(to_onehot_vector,
                               one_hot_maps=word2index_mapping,
                               use_words=use_words,
-                              skip_top=skip_top,
                               maxlen=MAXlen,
                               )
 
@@ -174,16 +191,16 @@ def build_design_matrix(vocab_size, use_words,
         assert isinstance(dev_split, int), "dev_split must be integer e.g. 14 implies 14%"
 
         if verbose:
-            print("creating dev set")
+            print("creating development set")
 
-        random.shuffle(results)
+        numpy.random.shuffle(results)
 
-        split = int((float(dev_split) / 100.0) * modelParameters.trainingCount)
+        split = int((dev_split / 100.0) * modelParameters.trainingCount)
         dev_set = results[:split]
         results = results[split:]
 
         dev_designMatrix = numpy.zeros((len(dev_set), MAXlen), dtype='int32')
-        dev_targets = numpy.zeros((len(dev_set), 1), dtype='int32')
+        dev_targets = numpy.zeros((len(dev_set), 1), dtype='float32')
 
         designMatrix = numpy.resize(designMatrix, (len(results), MAXlen))
         targets = numpy.resize(targets, (len(results), 1))
@@ -198,30 +215,35 @@ def build_design_matrix(vocab_size, use_words,
         designMatrix[idx, :] = vector
 
         if testing_phase:
-            # rating==review ID for test data (test data != dev set)
+            # rating==review ID for test data in Kaggle format
             targets[idx, 0] = rating
 
         else:
             targets[idx, 0] = rating >= 7
 
     if verbose:
-        print("finished generating design matrices and target vectors")
+        print("finished generating design matrix and target vector")
+
+    if kwargs.get("DEBUG"):
+        print("reconstructing reviews from design matrix")
+        reconstruct_reviews_from_designMatrix(designMatrix, targets, word2index_mapping)
 
     if not testing_phase and dev_split is not None:
 
         if not createValidationSet:
             # using dev set but no validation set
             return (
-                (designMatrix, targets), (dev_designMatrix, dev_targets), (dev_designMatrix[:0, :], dev_targets[:0, :]))
+                (designMatrix, targets), (dev_designMatrix, dev_targets),
+                (dev_designMatrix[:0, :0], dev_targets[:0, :0]))
 
         else:
-            # return format is (trainingData),(devData),(testData)
-            return ((designMatrix, targets), (dev_designMatrix[500:, :], dev_targets[500:, :]),
-                    (dev_designMatrix[:500, :], dev_targets[:500, :]))
+            # return format is (trainingData tuple),(devData tuple),(valData tuple)
+            return ((designMatrix, targets), (dev_designMatrix[500:], dev_targets[500:]),
+                    (dev_designMatrix[:500], dev_targets[:500]))
 
     else:
 
-        return (designMatrix, targets)
+        return designMatrix, targets
 
 
 def construct_kaggle_test_data(vocab_size, use_words):
@@ -267,7 +289,7 @@ def construct_designmatrix_pairs(VocabSize, useWords, skipTop=0, devSplit=None, 
     # these cutoffs reduce the final training and dev set sizes
     # after they have been created to speed up training.
     # these paramters will not help if you are low on RAM. see top of module
-    TRAIN_CUTOFF = 21500
+    TRAIN_CUTOFF = 50000
     DEV_CUTOFF = 3000
 
     ((X_train, y_train), (X_dev, y_dev), _) = build_design_matrix(VocabSize,
@@ -392,7 +414,6 @@ def construct_designmatrix_pairs(VocabSize, useWords, skipTop=0, devSplit=None, 
 
     # form of combinations
     # [( (Xl,yl), (Xr,yr), SIM ), ...]
-
 
     X_left = numpy.zeros((len(Traincombo[:TRAIN_CUTOFF]), modelParameters.MaxLen_w), dtype='int32')
     X_right = numpy.zeros((len(Traincombo[:TRAIN_CUTOFF]), modelParameters.MaxLen_w), dtype='int32')

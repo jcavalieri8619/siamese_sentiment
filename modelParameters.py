@@ -17,17 +17,17 @@ devcomboSize = int((trainingCount * float(devset_split) / 100) * float(87) / 43)
 
 # index for words that our out-of-vocab; using 0 may not be the best option
 # because many weights in the model will vanish so try small positive ints
-UNK_INDEX = 0
+UNK_INDEX = 1
 
 # TODO what is sane value for this?
 # margin used in contrastive loss_fn function
 Margin = 1.25
 
-# assuming full vocab is 85000; much higher in reality
-VocabSize_w = 73000  # (73000 +(UNK_INDEX+1)*(UNK_INDEX>0))
+# assuming full vocab is 73000; much higher in reality
+VocabSize_w = 73000 + (UNK_INDEX + 1)
 
 # total number unique chars in reviews (no unicode)
-VocabSize_c = (58 + (UNK_INDEX + 1) * (UNK_INDEX > 0))
+VocabSize_c = 58 + (UNK_INDEX + 1)
 
 # median review length in words is 2128
 MaxLen_w = 540
@@ -36,4 +36,4 @@ MaxLen_w = 540
 MaxLen_c = (14 * MaxLen_w)
 
 # skip the top most frequent words for stop word removal; not valid in character mode
-skip_top = 5
+skip_top = 20

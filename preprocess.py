@@ -14,7 +14,7 @@ import modelParameters
 
 TRAINPOS_DIR = './training_data/train/pos'
 TRAINNEG_DIR = './training_data/train/neg'
-
+CFDPATH= './model_data/CFD.pickle'
 
 def generate_char_list(string, strip_html=True):
     if strip_html:
@@ -23,7 +23,7 @@ def generate_char_list(string, strip_html=True):
         s = string.lower()
     normalized_string = regex.sub(r'\s+', r' ', s)  # change any kind of whitespace to a single space
 
-    list_norm_chars = regex.findall(r"\w|\s|[?!'#@$:\"&*=,]", normalized_string)
+    list_norm_chars = regex.findall(r"\w|[?!'#@$:\"&*=,]", normalized_string)
     return list_norm_chars
 
 
@@ -33,9 +33,11 @@ def generate_word_list(string, strip_html=True):
     else:
         s = string.lower()
 
-    normalized_string = regex.sub(r'\s+', r' ', s)  # change any kind of whitespace to a single space
+    normalized_string = regex.sub(r"\s+", r' ', s)  # change any kind of whitespace to a single space
 
-    list_normalized_string = regex.findall(r'\b\w+\b|[!?]', normalized_string)  # list of words ('!' and '?' included)
+    # list of words all words seen during training including strings like '!!!' , '??', '....'
+    # as these repeated punctuations tend to imply more than the're gramatical meaning
+    list_normalized_string = regex.findall(r"\b\w+[']?\w*\b|\!+|\?+|\.{3,}", normalized_string)
     return list_normalized_string
 
 
@@ -44,7 +46,7 @@ def strip_html_tags(string, verbose=False):
     return p.sub(' ', string)
 
 
-def sentiment2reviews_map():
+def sentiment2reviews_map(**kwargs):
     """
     create dictionarys for positive and negative reviews where
     neg_files_map will map a sentiment rating (i.e. 2 stars) to
@@ -70,28 +72,29 @@ def sentiment2reviews_map():
     # note: review_file[-5] gets rating of review from training set
     for review_file in os.listdir(TRAINPOS_DIR):
         with open(os.path.join(TRAINPOS_DIR, review_file), 'r') as review:
-            stars = int(review_file[-5])
-            pos_files_map[stars if stars else 10]. \
-                append((strip_html_tags(review.read())))
+            ID_rating = review_file.split('_')
+            stars=ID_rating[1].split('.')[0]
+            pos_files_map[int(stars)].append((strip_html_tags(review.read())))
 
     for review_file in os.listdir(TRAINNEG_DIR):
         with open(os.path.join(TRAINNEG_DIR, review_file), 'r') as review:
-            neg_files_map[int(review_file[-5])]. \
-                append(strip_html_tags(review.read()))
+            ID_rating = review_file.split('_')
+            stars = ID_rating[1].split('.')[0]
+            neg_files_map[int(stars)].append(strip_html_tags(review.read()))
 
     sentiment2review_map = {"positive": pos_files_map, "negative": neg_files_map}
 
     # building cond freq dists
 
-    if not os.path.exists('./model_data/CFD.pickle'):
-        ratingCFD = ConditionalFreqDist()  # intel python may have nltk bug
+    if not os.path.exists(CFDPATH):
+        ratingCFD = ConditionalFreqDist()
         # ratingCFD = collections.defaultdict(Counter)
         for label, file_map in sentiment2review_map.iteritems():
             for stars, reviewList in file_map.iteritems():
                 for review in reviewList:
                     ratingCFD[stars].update(FreqDist(generate_word_list(review)))
 
-        with open('./model_data/CFD.pickle', 'wb') as outfile:
+        with open(CFDPATH, 'wb') as outfile:
             pickle.dump(ratingCFD, outfile)
         # no longer needed once pickled
         del ratingCFD
@@ -112,7 +115,7 @@ def concat_review_strings(verbose=True):
     if verbose:
         print('concatenting reviews')
 
-    sentiment2review_maps = sentiment2reviews_map()
+    sentimentReview_maps = sentiment2reviews_map()
 
     # all reviews are concatenated into one single string
     all_reviews = ''
@@ -120,67 +123,61 @@ def concat_review_strings(verbose=True):
     all_neg_reviews = ''
 
     # sentiment2reviews is the dict with keys 'positive' and 'negative'
-    for stars in sentiment2review_maps['positive'].keys():
-        for reviews in sentiment2review_maps['positive'][stars]:
-            for review in reviews:
+    for label, file_map in sentimentReview_maps.iteritems():
+        for stars, reviewList in file_map.iteritems():
+            for review in reviewList:
                 all_reviews += review
-                all_pos_reviews += review
-
-    for stars in sentiment2review_maps['negative'].keys():
-        for reviews in sentiment2review_maps['negative'][stars]:
-            for review in reviews:
-                all_reviews += review
-                all_neg_reviews += review
+                if label is 'positive':
+                    all_pos_reviews += review
+                else:
+                    all_neg_reviews += review
 
     # return dict so that 'all' maps to string of all concatenated reviews ect
     return {'all': all_reviews, 'positive': all_pos_reviews,
             'negative': all_neg_reviews}
 
 
-def generate_one_hot_maps(vocab_size,
-                          skip_top,
-                          use_words,
-                          verbose=False):
+def generate_one_hot_maps(vocab_size, skip_top, use_words,DEBUG=None):
     """
-    create mapping of each word or char in Vocab to an integer representing its
-    index in a one-hot vector
 
-    :param use_words: if training on characters set False; else defaults to words
+    :param vocab_size:
+    :param skip_top:
+    :param use_words:
     :param verbose:
     :return:
     """
 
-    if verbose:
-        print('building word to 1hot indices mapping')
-
     # concat_review_strings returns dictionary keyed by 'all', 'positive'
     # and 'negative' so we access 'all' here because we need all_reviews string
+    all_reviews = concat_review_strings()['all']
 
-    reviewstr_dict = concat_review_strings()
-    all_reviews = reviewstr_dict['all']
+    freq_dist = collections.Counter()
 
     if use_words:
-        list_normalized_all = generate_word_list(all_reviews)
-
+        freq_dist.update(generate_word_list(all_reviews))
 
     else:
-        list_normalized_all = generate_char_list(all_reviews)
-        # using characters then no need to skip most frequent chars
+        freq_dist.update(generate_char_list(all_reviews))
         skip_top = 0
 
-    _freq_dist = FreqDist(list_normalized_all)
+    # list of words starting from most frequent--skip_top removes K most frequent words as stop-word removal technique
+    symbols_by_decreasingfreq = freq_dist.most_common()[skip_top:]
 
-    # list of words starting from most frequent
-    # may skip some very freq via skiptop
-    # [ skip_top:(vocab_size+skip_top) ]
+    if DEBUG:
+        print(symbols_by_decreasingfreq[:70])
 
-    words_by_decreasingfreq = (_freq_dist.most_common()[skip_top:(vocab_size + skip_top)])
-
-    if verbose:
-        print(words_by_decreasingfreq[20:60])
-
-    one_hot_maps = collections.defaultdict(int)
-    for idx, (key, val) in enumerate(words_by_decreasingfreq[:vocab_size]):
-        one_hot_maps[key] = idx + modelParameters.UNK_INDEX + 1
+    one_hot_maps = dict()
+    for idx, (wrd, freq) in enumerate(symbols_by_decreasingfreq[:vocab_size]):
+        one_hot_maps[wrd] = idx + modelParameters.UNK_INDEX + 1
 
     return one_hot_maps
+
+
+def get_model_data():
+    sentrevmap = sentiment2reviews_map()
+
+    allRevDict = concat_review_strings()
+
+    oneHots = generate_one_hot_maps(modelParameters.VocabSize_w, modelParameters.skip_top, True)
+
+    return sentrevmap, allRevDict, oneHots

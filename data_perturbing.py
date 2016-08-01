@@ -63,6 +63,7 @@ def identify_highprob_subset(model, X, y, subset_size, **kwargs):
     CorrectNegExamples = negExamples[negExamples[:, 0] < 0.5]
     if DEBUG_MODE:
         print("CorrectNegExamples shape: {}".format(CorrectNegExamples.shape))
+
     # sorted from most probable to least probably--only want most probable
     CorrectNegExamples.sort(axis=0)
 
@@ -380,7 +381,7 @@ def perturb_testing(loss_fn, optimizer, invertTargets, negateLoss, numEpochs, ba
 
     highprob_subset, _ = identify_highprob_subset(trained_1hotModel, X, y, subset_size, DEBUG=True)
 
-    perturb_data(trained_1hotModel, highprob_subset, loss_fn, optimizer, numEpochs,
-                 batchSize, constrainWeight, epsilon, invertTargets, negateLoss)
+    perturbedModel = perturb_data(trained_1hotModel, highprob_subset, loss_fn, optimizer, numEpochs,
+                                  batchSize, constrainWeight, epsilon, invertTargets, negateLoss)
 
-    return trained_1hotModel, trained_model_orig, highprob_subset
+    return perturbedModel, trained_model_orig, highprob_subset
