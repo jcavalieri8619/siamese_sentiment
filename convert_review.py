@@ -4,17 +4,15 @@ Created by John P Cavalieri
 """
 from __future__ import print_function
 
-import multiprocessing
+import cPickle
 import os
-import random
 from functools import partial
 from itertools import combinations
 
 import numpy
 
 import modelParameters
-from keras.preprocessing.text import one_hot
-from preprocess import (generate_char_list,generate_word_list,
+from preprocess import (generate_word_list, generate_char_list,
                         generate_one_hot_maps, sentiment2reviews_map)
 
 # if your computer cannot generate all the pairs of input data
@@ -25,13 +23,13 @@ from preprocess import (generate_char_list,generate_word_list,
 TRAIN_LOW_RAM_CUTOFF = None
 DEV_LOW_RAM_CUTOFF = None
 
-# seed for consistency across calls
-numpy.random.seed(113)
-
 RECONSTRUCTED_REVIEWS_PATH = "./model_data/reconstructed_reviews.txt"
+PICKLED_CNN_INPUTS = "./model_data/CNN_inputs.pkl"
+PICKLED_SIAMESE_INPUTS = "./model_data/SIAMESE_inputs.pkl"
 
 
-def to_onehot_vector(reviewObject, one_hot_maps, use_words, maxlen=None, **kwargs):
+def to_onehot_vector(reviewObject, one_hot_maps, use_words,
+                     truncate, padding, maxlen=None, **kwargs):
     """
 
     :param reviewObject: tuple containing rating and movie review
@@ -39,24 +37,41 @@ def to_onehot_vector(reviewObject, one_hot_maps, use_words, maxlen=None, **kwarg
     :param use_words: False to use chars
     :param skip_top: remove K most frequently occuring words seen during training i.e. the,is,a,...
     :param maxlen: upper limit on words per review; default value set in modelParameters module
+    :param truncate: 'pre' truncates at the beginning of review & 'post' truncates at the end of review
+    :param padding: 'pre' pads beginning of review & 'post' pads at the end of review if review length < maxlen
     :param kwargs:
     :return: tuple containing a vector of 1hot indices representing the movie review and the movie rating
     """
+
+    valid_truncate_padding_args = {'post', 'pre'}
+
+    assert truncate in valid_truncate_padding_args and padding in valid_truncate_padding_args, \
+        'to_onehot_vector truncate and padding args must be either \'pre\' or \'post\' '
+
     rating, review = reviewObject
 
     MAXlen = (maxlen if maxlen is not None else
               modelParameters.MaxLen_w if use_words else
               modelParameters.MaxLen_c)
 
-    if use_words:
-        vector_of_onehots = numpy.zeros((1, MAXlen), dtype='int32')
-        for indx, word in enumerate(generate_word_list(review)[:MAXlen]):
-            one_hot_maps.get(word, modelParameters.UNK_INDEX)
+    generate_symbol_list = generate_word_list if use_words else generate_char_list
 
-    else:
-        vector_of_onehots = numpy.zeros((1, MAXlen), dtype='int32')
-        for indx, char in enumerate(generate_char_list(review)[:MAXlen]):
-            vector_of_onehots[0, indx] = one_hot_maps.get(char, modelParameters.UNK_INDEX)
+    word_list = generate_symbol_list(review)
+    start_index = 0
+    if truncate is 'pre':
+        if len(word_list) > MAXlen:
+            word_list = word_list[-(MAXlen + 1):]
+        elif padding is 'pre':
+            start_index = MAXlen - len(word_list) - 1
+
+    elif truncate is 'post' and padding is 'pre':
+        if len(word_list) < MAXlen:
+            start_index = MAXlen - len(word_list) - 1
+
+    vector_of_onehots = numpy.zeros((1, MAXlen), dtype='float32')
+    vector_of_onehots[0, start_index] = modelParameters.START_SYMBOL
+    for indx, word in enumerate(word_list[:MAXlen - 1]):
+        vector_of_onehots[0, (start_index + indx + 1)] = one_hot_maps.get(word, modelParameters.UNK_INDEX)
 
     return vector_of_onehots, rating
 
@@ -69,9 +84,11 @@ def reconstruct_reviews_from_designMatrix(designMatrix, targets, onehot_maps, ):
     :param onehot_maps:
     :return:
     """
+
     inverted_onehots = dict([(indx, wrd) for wrd, indx in onehot_maps.iteritems()])
     inverted_onehots[0] = '_PAD_'
-    inverted_onehots[1] = 'UNK'
+    inverted_onehots[1] = '_START_'
+    inverted_onehots[2] = '_UNK_'
 
     with open(RECONSTRUCTED_REVIEWS_PATH, 'w') as f:
         for (onehot_vector, label) in zip(designMatrix, targets):
@@ -87,19 +104,27 @@ def reconstruct_reviews_from_designMatrix(designMatrix, targets, onehot_maps, ):
 
 def build_design_matrix(vocab_size, use_words,
                         skip_top=0, maxlen=None, dev_split=None,
-                        createValidationSet=True, verbose=True, **kwargs):
+                        createValidationSet=True, truncate='post', padding='post',
+                        pickle=False, verbose=True, **kwargs):
     """
 
-    :param vocab_size: size of vocabularly
-    :param use_words: False to use chars
-    :param skip_top: remove K most frequently occuring words seen during training i.e. the,is,a,...
-    :param maxlen: upper limit on words per review; default value set in modelParameters module
-    :param dev_split: int giving percent of training data to hold out for dev set
-    :param createValidationSet: if True then splits off 700 examples from dev set for validation
+    :param vocab_size:
+    :param use_words:
+    :param skip_top:
+    :param maxlen:
+    :param dev_split:
+    :param createValidationSet:
+    :param truncate:
+    :param padding:
+    :param pickle:
     :param verbose:
     :param kwargs:
-    :return: tuple returning design matrix and target for requested data sets: training,dev,validation
+    :return:
     """
+
+    if pickle and os.path.exists(PICKLED_CNN_INPUTS):
+        rv = cPickle.load(PICKLED_CNN_INPUTS)
+        return rv
 
     review_iterator = list()
 
@@ -120,45 +145,35 @@ def build_design_matrix(vocab_size, use_words,
             print("building test data objects")
             print("test data has no targets;\n"
                   "so the targets vector will contain ID of review at that index")
+            if use_words:
+                print("building TEST WORD design matrix")
+
+            else:
+                print("building TEST CHAR design matrix")
 
         for review_file in os.listdir(TESTDIR):
             with open(os.path.join(TESTDIR, review_file)) as f:
                 # review id and review text in tuple
                 review_iterator.append((review_file[:-4], f.read()))
 
-        if use_words:
-            if verbose:
-                print("building TEST word design matrix")
-
-            designMatrix = numpy.zeros((modelParameters.testingCount,
-                                        MAXlen), dtype='int32')
-
-        else:
-            if verbose:
-                print("building TEST char design matrix")
-
-            designMatrix = numpy.zeros((modelParameters.testingCount,
-                                        MAXlen), dtype='int32')
+        designMatrix = numpy.zeros((modelParameters.testingCount, MAXlen), dtype='float32')
 
         # for test data targets vector will hold review IDs; not ratings
         targets = numpy.zeros((modelParameters.testingCount, 1))
-
-
 
     else:
         # building TRAINING data
 
         if verbose:
             if use_words:
-                print("building TRAINING word design matrix")
+                print("building TRAINING WORD design matrix")
 
             else:
-                print("building TRAINING char design matrix")
+                print("building TRAINING CHAR design matrix")
 
         sentiment_reviews = sentiment2reviews_map()
 
-        designMatrix = numpy.zeros((modelParameters.trainingCount,
-                                    MAXlen), dtype='int32')
+        designMatrix = numpy.zeros((modelParameters.trainingCount, MAXlen), dtype='float32')
 
         targets = numpy.zeros((modelParameters.trainingCount, 1), dtype='float32')
 
@@ -170,23 +185,28 @@ def build_design_matrix(vocab_size, use_words,
         numpy.random.shuffle(review_iterator)
 
     # now in common area where both test and training phase will execute
-
     word2index_mapping = generate_one_hot_maps(vocab_size, skip_top, use_words, kwargs.get("DEBUG"))
 
     func_to_one_hot = partial(to_onehot_vector,
                               one_hot_maps=word2index_mapping,
                               use_words=use_words,
+                              truncate=truncate,
+                              padding=padding,
                               maxlen=MAXlen,
                               )
 
-    # design matrix built in parallel because why not
-    workers = multiprocessing.Pool(multiprocessing.cpu_count())
-    results = workers.map(func_to_one_hot,
-                          review_iterator)
-    workers.close()
-    workers.join()
+    # # design matrix built in parallel because why not
+    # workers = multiprocessing.Pool(multiprocessing.cpu_count())
+    # results = workers.map(func_to_one_hot,
+    #                       review_iterator)
+    # workers.close()
+    # workers.join()
 
-    if dev_split is not None:
+    results = []
+    for elem in review_iterator:
+        results.append(func_to_one_hot(elem))
+
+    if dev_split:
 
         assert isinstance(dev_split, int), "dev_split must be integer e.g. 14 implies 14%"
 
@@ -199,7 +219,7 @@ def build_design_matrix(vocab_size, use_words,
         dev_set = results[:split]
         results = results[split:]
 
-        dev_designMatrix = numpy.zeros((len(dev_set), MAXlen), dtype='int32')
+        dev_designMatrix = numpy.zeros((len(dev_set), MAXlen), dtype='float32')
         dev_targets = numpy.zeros((len(dev_set), 1), dtype='float32')
 
         designMatrix = numpy.resize(designMatrix, (len(results), MAXlen))
@@ -228,22 +248,42 @@ def build_design_matrix(vocab_size, use_words,
         print("reconstructing reviews from design matrix")
         reconstruct_reviews_from_designMatrix(designMatrix, targets, word2index_mapping)
 
-    if not testing_phase and dev_split is not None:
+    if not testing_phase and dev_split:
 
         if not createValidationSet:
+
             # using dev set but no validation set
-            return (
-                (designMatrix, targets), (dev_designMatrix, dev_targets),
-                (dev_designMatrix[:0, :0], dev_targets[:0, :0]))
+            rv = ((designMatrix, targets), (dev_designMatrix, dev_targets),
+                  (dev_designMatrix[:0, :0], dev_targets[:0, :0]))
+
+            if pickle:
+                with open(PICKLED_CNN_INPUTS, 'wb') as f:
+                    cPickle.dump(rv, f, )
+
+            return rv
 
         else:
+
+            valsize = len(dev_designMatrix) / 4
             # return format is (trainingData tuple),(devData tuple),(valData tuple)
-            return ((designMatrix, targets), (dev_designMatrix[500:], dev_targets[500:]),
-                    (dev_designMatrix[:500], dev_targets[:500]))
+            rv = ((designMatrix, targets), (dev_designMatrix[valsize:], dev_targets[valsize:]),
+                  (dev_designMatrix[:valsize], dev_targets[:valsize]))
+
+            if pickle:
+                with open(PICKLED_CNN_INPUTS, 'wb') as f:
+                    cPickle.dump(rv, f, )
+
+            return rv
 
     else:
 
-        return designMatrix, targets
+        rv = designMatrix, targets
+
+        if pickle:
+            with open(PICKLED_CNN_INPUTS, 'wb') as f:
+                cPickle.dump(rv, f, )
+
+        return rv
 
 
 def construct_kaggle_test_data(vocab_size, use_words):
@@ -259,14 +299,15 @@ def construct_kaggle_test_data(vocab_size, use_words):
                                test_data=True)
 
 
-def construct_designmatrix_pairs(VocabSize, useWords, skipTop=0, devSplit=None, verbose=True, **kwargs):
+def construct_designmatrix_pairs(VocabSize, useWords, skipTop=0, devSplit=None,
+                                 trainingSet_cutoff=25000, devSet_cutoff=3000, verbose=True, **kwargs):
     """
     first generates standard design matrix and target vector then builds pairs
      for siamese input. Effectively we take all positive reviews choose 2, all
      negative reviews choose 2 and all reviews choose 2. Lecunn uses permutations,
      but that seems redundant. Ultimately the entire space of combinations will
      require an on-dist batch portion because its massive; for now I am just using a
-     subset controlled by TRAIN_CUTOFF and DEV_CUTOFF in addition to limiting the
+     subset controlled by trainingSet_cutoff and devSet_cutoff in addition to limiting the
      number of mixed pairs created. If just creating the pairs requires too much
      RAM then set TRAIN_LOW_RAM_CUTOFF at the top of the module to
      some x << 20,000
@@ -286,17 +327,17 @@ def construct_designmatrix_pairs(VocabSize, useWords, skipTop=0, devSplit=None, 
     TRAINCOMBO_SIZE = modelParameters.trainingComboSize
     DEVCOMBO_SIZE = modelParameters.devcomboSize
 
-    # these cutoffs reduce the final training and dev set sizes
-    # after they have been created to speed up training.
-    # these paramters will not help if you are low on RAM. see top of module
-    TRAIN_CUTOFF = 50000
-    DEV_CUTOFF = 3000
-
     ((X_train, y_train), (X_dev, y_dev), _) = build_design_matrix(VocabSize,
                                                                   use_words=useWords,
                                                                   skip_top=skipTop,
                                                                   dev_split=devSplit,
                                                                   createValidationSet=False)
+
+    X_KNNtest = X_train[:2000]
+    y_KNNtest = y_train[:2000]
+
+    X_train = X_train[2000:]
+    y_train = y_train[2000:]
 
     if TRAIN_LOW_RAM_CUTOFF is not None:
         X_train = X_train[:TRAIN_LOW_RAM_CUTOFF]
@@ -310,8 +351,8 @@ def construct_designmatrix_pairs(VocabSize, useWords, skipTop=0, devSplit=None, 
 
     del X_train, y_train, X_dev, y_dev
 
-    random.shuffle(trainPairs)
-    random.shuffle(devPairs)
+    numpy.random.shuffle(trainPairs)
+    numpy.random.shuffle(devPairs)
 
     posTrain = [pair for pair in trainPairs if pair[1]]
 
@@ -328,7 +369,7 @@ def construct_designmatrix_pairs(VocabSize, useWords, skipTop=0, devSplit=None, 
 
     pcombo = list(combinations(posTrain, 2))
     count = 0
-    random.shuffle(pcombo)
+    numpy.random.shuffle(pcombo)
 
     for item in pcombo:
         count += 1
@@ -342,7 +383,7 @@ def construct_designmatrix_pairs(VocabSize, useWords, skipTop=0, devSplit=None, 
 
     ncombo = list(combinations(negTrain, 2))
     count = 0
-    random.shuffle(ncombo)
+    numpy.random.shuffle(ncombo)
 
     for item in ncombo:
         count += 1
@@ -356,7 +397,7 @@ def construct_designmatrix_pairs(VocabSize, useWords, skipTop=0, devSplit=None, 
 
     pdcombo = list(combinations(posDev, 2))
     count = 0
-    random.shuffle(pdcombo)
+    numpy.random.shuffle(pdcombo)
     for item in pdcombo:
         count += 1
         Devcombo.append((item[0], item[1], SIMILAR))
@@ -369,7 +410,7 @@ def construct_designmatrix_pairs(VocabSize, useWords, skipTop=0, devSplit=None, 
 
     ndcombo = list(combinations(negDev, 2))
     count = 0
-    random.shuffle(ndcombo)
+    numpy.random.shuffle(ndcombo)
     for item in ndcombo:
 
         count += 1
@@ -383,7 +424,7 @@ def construct_designmatrix_pairs(VocabSize, useWords, skipTop=0, devSplit=None, 
 
     allTrainCombo = list(combinations(trainPairs[:16000], 2))
     count = 0
-    random.shuffle(allTrainCombo)
+    numpy.random.shuffle(allTrainCombo)
 
     for item in allTrainCombo:
         if item[0][1] == item[1][1]:
@@ -400,7 +441,7 @@ def construct_designmatrix_pairs(VocabSize, useWords, skipTop=0, devSplit=None, 
 
     allDevCombo = list(combinations(devPairs[:2000], 2))
     count = 0
-    random.shuffle(allDevCombo)
+    numpy.random.shuffle(allDevCombo)
 
     for item in allDevCombo:
         if item[0][1] != item[1][1]:
@@ -415,64 +456,65 @@ def construct_designmatrix_pairs(VocabSize, useWords, skipTop=0, devSplit=None, 
     # form of combinations
     # [( (Xl,yl), (Xr,yr), SIM ), ...]
 
-    X_left = numpy.zeros((len(Traincombo[:TRAIN_CUTOFF]), modelParameters.MaxLen_w), dtype='int32')
-    X_right = numpy.zeros((len(Traincombo[:TRAIN_CUTOFF]), modelParameters.MaxLen_w), dtype='int32')
+    X_left = numpy.zeros((len(Traincombo[:trainingSet_cutoff]), modelParameters.MaxLen_w), dtype='float32')
+    X_right = numpy.zeros((len(Traincombo[:trainingSet_cutoff]), modelParameters.MaxLen_w), dtype='float32')
 
-    y_left = numpy.zeros((len(Traincombo[:TRAIN_CUTOFF]), 1), dtype='int32')
-    y_right = numpy.zeros((len(Traincombo[:TRAIN_CUTOFF]), 1), dtype='int32')
+    y_left = numpy.zeros((len(Traincombo[:trainingSet_cutoff]), 1), dtype='float32')
+    y_right = numpy.zeros((len(Traincombo[:trainingSet_cutoff]), 1), dtype='float32')
 
-    similarity_labels = numpy.zeros((len(Traincombo[:TRAIN_CUTOFF]), 1), dtype='int32')
+    similarity_labels = numpy.zeros((len(Traincombo[:trainingSet_cutoff]), 1), dtype='float32')
 
-    Xtest_left = numpy.zeros((len(Traincombo[TRAIN_CUTOFF:]), modelParameters.MaxLen_w), dtype='int32')
-    Xtest_right = numpy.zeros((len(Traincombo[TRAIN_CUTOFF:]), modelParameters.MaxLen_w), dtype='int32')
+    Xval_left = numpy.zeros((len(Traincombo[trainingSet_cutoff:]), modelParameters.MaxLen_w), dtype='float32')
+    Xval_right = numpy.zeros((len(Traincombo[trainingSet_cutoff:]), modelParameters.MaxLen_w), dtype='float32')
 
-    ytest_left = numpy.zeros((len(Traincombo[TRAIN_CUTOFF:]), 1), dtype='int32')
-    ytest_right = numpy.zeros((len(Traincombo[TRAIN_CUTOFF:]), 1), dtype='int32')
+    yval_left = numpy.zeros((len(Traincombo[trainingSet_cutoff:]), 1), dtype='float32')
+    yval_right = numpy.zeros((len(Traincombo[trainingSet_cutoff:]), 1), dtype='float32')
 
-    similarity_testlabels = numpy.zeros((len(Traincombo[TRAIN_CUTOFF:]), 1), dtype='int32')
+    similarity_vallabels = numpy.zeros((len(Traincombo[trainingSet_cutoff:]), 1), dtype='float32')
 
-    random.shuffle(Traincombo)
-    for idx, (left, right, similar_label) in enumerate(Traincombo[:TRAIN_CUTOFF]):
+    numpy.random.shuffle(Traincombo)
+    for idx, (left, right, similar_label) in enumerate(Traincombo[:trainingSet_cutoff]):
         X_left[idx, :], y_left[idx, 0] = left
 
         X_right[idx, :], y_right[idx, 0] = right
 
         similarity_labels[idx, 0] = similar_label
 
-    for idx, (left, right, similar_label) in enumerate(Traincombo[TRAIN_CUTOFF:]):
-        Xtest_left[idx, :], ytest_left[idx, 0] = left
+    for idx, (left, right, similar_label) in enumerate(Traincombo[trainingSet_cutoff:]):
+        Xval_left[idx, :], yval_left[idx, 0] = left
 
-        Xtest_right[idx, :], ytest_right[idx, 0] = right
+        Xval_right[idx, :], yval_right[idx, 0] = right
 
-        similarity_testlabels[idx, 0] = similar_label
+        similarity_vallabels[idx, 0] = similar_label
 
     if devSplit is None:
         return ((X_left, y_left, X_right, y_right, similarity_labels), (None,),
-                (Xtest_left, ytest_left, Xtest_right, ytest_right, similarity_testlabels),)
+                (Xval_left, yval_left, Xval_right, yval_right, similarity_vallabels),
+                )
 
-    Xdev_left = numpy.zeros((len(Devcombo[:DEV_CUTOFF]), modelParameters.MaxLen_w), dtype='int32')
-    Xdev_right = numpy.zeros((len(Devcombo[:DEV_CUTOFF]), modelParameters.MaxLen_w), dtype='int32')
+    Xdev_left = numpy.zeros((len(Devcombo[:devSet_cutoff]), modelParameters.MaxLen_w), dtype='float32')
+    Xdev_right = numpy.zeros((len(Devcombo[:devSet_cutoff]), modelParameters.MaxLen_w), dtype='float32')
 
-    ydev_left = numpy.zeros((len(Devcombo[:DEV_CUTOFF]), 1), dtype='int32')
-    ydev_right = numpy.zeros((len(Devcombo[:DEV_CUTOFF]), 1), dtype='int32')
-    similarity_devlabels = numpy.zeros((len(Devcombo[:DEV_CUTOFF]), 1), dtype='int32')
+    ydev_left = numpy.zeros((len(Devcombo[:devSet_cutoff]), 1), dtype='float32')
+    ydev_right = numpy.zeros((len(Devcombo[:devSet_cutoff]), 1), dtype='float32')
+    similarity_devlabels = numpy.zeros((len(Devcombo[:devSet_cutoff]), 1), dtype='float32')
 
-    XdevKnn_left = numpy.zeros((len(Devcombo[DEV_CUTOFF:]), modelParameters.MaxLen_w), dtype='int32')
-    XdevKnn_right = numpy.zeros((len(Devcombo[DEV_CUTOFF:]), modelParameters.MaxLen_w), dtype='int32')
+    XdevKnn_left = numpy.zeros((len(Devcombo[devSet_cutoff:]), modelParameters.MaxLen_w), dtype='float32')
+    XdevKnn_right = numpy.zeros((len(Devcombo[devSet_cutoff:]), modelParameters.MaxLen_w), dtype='float32')
 
-    ydevKnn_left = numpy.zeros((len(Devcombo[DEV_CUTOFF:]), 1), dtype='int32')
-    ydevKnn_right = numpy.zeros((len(Devcombo[DEV_CUTOFF:]), 1), dtype='int32')
-    similarity_devKnnlabels = numpy.zeros((len(Devcombo[DEV_CUTOFF:]), 1), dtype='int32')
+    ydevKnn_left = numpy.zeros((len(Devcombo[devSet_cutoff:]), 1), dtype='float32')
+    ydevKnn_right = numpy.zeros((len(Devcombo[devSet_cutoff:]), 1), dtype='float32')
+    similarity_devKnnlabels = numpy.zeros((len(Devcombo[devSet_cutoff:]), 1), dtype='float32')
 
-    random.shuffle(Devcombo)
-    for idx, (left, right, similar_label) in enumerate(Devcombo[:DEV_CUTOFF]):
+    numpy.random.shuffle(Devcombo)
+    for idx, (left, right, similar_label) in enumerate(Devcombo[:devSet_cutoff]):
         Xdev_left[idx, :], ydev_left[idx, 0] = left
 
         Xdev_right[idx, :], ydev_right[idx, 0] = right
 
         similarity_devlabels[idx, 0] = similar_label
 
-    for idx, (left, right, similar_label) in enumerate(Devcombo[DEV_CUTOFF:]):
+    for idx, (left, right, similar_label) in enumerate(Devcombo[devSet_cutoff:]):
         XdevKnn_left[idx, :], ydevKnn_left[idx, 0] = left
 
         XdevKnn_right[idx, :], ydevKnn_right[idx, 0] = right
@@ -485,4 +527,5 @@ def construct_designmatrix_pairs(VocabSize, useWords, skipTop=0, devSplit=None, 
     return ((X_left, y_left, X_right, y_right, similarity_labels),
             (Xdev_left, ydev_left, Xdev_right, ydev_right, similarity_devlabels),
             (XdevKnn_left, ydevKnn_left, XdevKnn_right, ydevKnn_right, similarity_devKnnlabels),
-            (Xtest_left, ytest_left, Xtest_right, ytest_right, similarity_testlabels),)
+            (Xval_left, yval_left, Xval_right, yval_right, similarity_vallabels),
+            (X_KNNtest, y_KNNtest))

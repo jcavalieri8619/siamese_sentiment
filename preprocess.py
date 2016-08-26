@@ -14,7 +14,8 @@ import modelParameters
 
 TRAINPOS_DIR = './training_data/train/pos'
 TRAINNEG_DIR = './training_data/train/neg'
-CFDPATH= './model_data/CFD.pickle'
+CFDPATH = './model_data/CFD.pickle'
+
 
 def generate_char_list(string, strip_html=True):
     if strip_html:
@@ -73,7 +74,7 @@ def sentiment2reviews_map(**kwargs):
     for review_file in os.listdir(TRAINPOS_DIR):
         with open(os.path.join(TRAINPOS_DIR, review_file), 'r') as review:
             ID_rating = review_file.split('_')
-            stars=ID_rating[1].split('.')[0]
+            stars = ID_rating[1].split('.')[0]
             pos_files_map[int(stars)].append((strip_html_tags(review.read())))
 
     for review_file in os.listdir(TRAINNEG_DIR):
@@ -137,7 +138,7 @@ def concat_review_strings(verbose=True):
             'negative': all_neg_reviews}
 
 
-def generate_one_hot_maps(vocab_size, skip_top, use_words,DEBUG=None):
+def generate_one_hot_maps(vocab_size, skip_top, use_words, DEBUG=None):
     """
 
     :param vocab_size:
@@ -147,8 +148,12 @@ def generate_one_hot_maps(vocab_size, skip_top, use_words,DEBUG=None):
     :return:
     """
 
+    # assert modelParameters.START_SYMBOL < modelParameters.INDEX_FROM and \
+    #     modelParameters.UNK_INDEX < modelParameters.INDEX_FROM, "START_SYMBOL and UNK_INDEX must be < INDEX_FROM"
+
     # concat_review_strings returns dictionary keyed by 'all', 'positive'
     # and 'negative' so we access 'all' here because we need all_reviews string
+
     all_reviews = concat_review_strings()['all']
 
     freq_dist = collections.Counter()
@@ -168,7 +173,7 @@ def generate_one_hot_maps(vocab_size, skip_top, use_words,DEBUG=None):
 
     one_hot_maps = dict()
     for idx, (wrd, freq) in enumerate(symbols_by_decreasingfreq[:vocab_size]):
-        one_hot_maps[wrd] = idx + modelParameters.UNK_INDEX + 1
+        one_hot_maps[wrd] = idx + modelParameters.INDEX_FROM
 
     return one_hot_maps
 

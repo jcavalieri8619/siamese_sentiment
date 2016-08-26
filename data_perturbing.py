@@ -8,12 +8,13 @@ import h5py
 import os
 import shutil
 
+import keras.backend as K
 import numpy as np
 import theano
 import theano.tensor as T
-
-import keras.backend as K
 from keras.objectives import constrained_loss
+
+from network_utils import Batch_EarlyStopping
 from network_utils import get_network_layer_output
 
 
@@ -63,7 +64,6 @@ def identify_highprob_subset(model, X, y, subset_size, **kwargs):
     CorrectNegExamples = negExamples[negExamples[:, 0] < 0.5]
     if DEBUG_MODE:
         print("CorrectNegExamples shape: {}".format(CorrectNegExamples.shape))
-
     # sorted from most probable to least probably--only want most probable
     CorrectNegExamples.sort(axis=0)
 
@@ -298,8 +298,9 @@ def _convert_1hotWeights_to_embedWeights(weight_path):
     return new_path
 
 
-def perturb_data(model, optimal_subset, loss_func, optimizer, numEpochs, batchSize,
-                 constrainWeight, epsilon, invertTargets, negateLoss):
+def perturb_data(loss_func, optimizer, model, optimal_subset, numEpochs, batchSize,
+                 constrainWeight, epsilon, invertTargets, negateLoss,
+                 ):
     """
     the model parameter is pre-trained model that minimizes loss. By freezing the weights of all layers except the
     embedding layer and training with either inverted target vector or negated loss, we can perturb the embedding
@@ -328,19 +329,21 @@ def perturb_data(model, optimal_subset, loss_func, optimizer, numEpochs, batchSi
         return K.T.nlinalg.trace(K.dot(K.transpose(embedW_orig - embedW), embedW_orig - embedW)) - eps
 
     # freeze the weights of every layer except embedding layer
-    for L in model.layers:
-        if L.name is not 'embeddingLayer':
-            L.trainable = False
+    for idx, L in enumerate(model.layers):
+        if idx == 0:
+            continue
+        L.trainable = False
 
-    assert model.layers[1].trainable is True, "embedding layer must be trainable"
+    assert model.layers[0].trainable is True, "embedding layer must be trainable"
 
-    constrain_fn_args = [model.layers[1].W, model.layers[1].W.get_value(), epsilon]
+    constrain_fn_args = [model.layers[0].W,
+                         model.layers[0].W.get_value(), epsilon]
 
     loss = constrained_loss((lambda ytru, ypred: neg(loss_func(ytru, ypred)) if negateLoss else loss_func(ytru, ypred)),
                             constrain_fn, constrain_fn_args, init='uniform',
                             constraint_weight=constrainWeight)
 
-    model.compile(optimizer=optimizer, loss=loss, )
+    model.compile(optimizer=optimizer, loss=loss, metrics=['accuracy'])
 
     targets = optimal_subset[1]
     onehotVectors = optimal_subset[0]
@@ -348,7 +351,9 @@ def perturb_data(model, optimal_subset, loss_func, optimizer, numEpochs, batchSi
     if invertTargets:
         targets = np.logical_not(targets)
 
-    model.fit(onehotVectors, targets, nb_epoch=numEpochs, batch_size=batchSize, )
+    callbacks = [Batch_EarlyStopping(verbose=1)]
+
+    model.fit(onehotVectors, targets, nb_epoch=numEpochs, batch_size=batchSize, callbacks=callbacks)
 
     return model
 
@@ -369,19 +374,31 @@ def perturb_testing(loss_fn, optimizer, invertTargets, negateLoss, numEpochs, ba
     :param epsilon:
     :return:
     """
+
     from CNN_model import build_CNN_input, build_CNN_model
 
-    print("gathering model inputs")
-    _, _, X, y, _, _ = build_CNN_input(testSet=False)
+    modelInputs = build_CNN_input()
 
     trained_1hotModel = build_CNN_model('1hotVector', weight_path=weightPath)
     trained_model_orig = build_CNN_model('1hotVector', weight_path=weightPath)
 
     print("identifying an optimal subset of inputs (X,y=1) to perturb")
 
-    highprob_subset, _ = identify_highprob_subset(trained_1hotModel, X, y, subset_size, DEBUG=True)
+    highprob_subset, _ = identify_highprob_subset(trained_1hotModel, modelInputs['dev'][0], modelInputs['dev'][1],
+                                                  subset_size, DEBUG=True)
 
-    perturbedModel = perturb_data(trained_1hotModel, highprob_subset, loss_fn, optimizer, numEpochs,
+    perturbedModel = perturb_data(loss_fn, optimizer, trained_1hotModel, highprob_subset, numEpochs,
                                   batchSize, constrainWeight, epsilon, invertTargets, negateLoss)
 
     return perturbedModel, trained_model_orig, highprob_subset
+
+
+def construct_perturbed_input(perturb_mapping, onehot_vectors):
+    """
+
+    :param perturb_mapping:
+    :param onehot_vectors:
+    :return:
+    """
+
+    return K.gather(perturb_mapping, onehot_vectors)
