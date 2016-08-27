@@ -1,5 +1,5 @@
-link to IMDB dataset from Stanford: http://ai.stanford.edu/~amaas/data/sentiment/
-just copy the <train> directory from the download file into the training_data folder inside the project.
+link to IMDB dataset from Stanford: http://ai.stanford.edu/~amaas/data/sentiment/aclImdb_v1.tar.gz
+just copy the <train> directory from the downloaded file into the training_data folder inside the project.
 The directory structure inside project will be:  training_data/train/{pos,neg,unsup}
 
 
