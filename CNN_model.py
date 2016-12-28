@@ -3,16 +3,15 @@ from __future__ import print_function
 import datetime
 import os
 
-# np.random.seed(1337)
-
-from keras.layers import Input
-from keras.layers.embeddings import Embedding
-from keras.layers import Dense, Dropout, Flatten
-from keras.layers import Convolution1D, MaxPooling1D
 from keras.callbacks import ModelCheckpoint, EarlyStopping
 from keras.engine.training import Model
-from convert_review import build_design_matrix
+from keras.layers import Convolution1D, MaxPooling1D
+from keras.layers import Dense, Dropout, Flatten
+from keras.layers import Input
+from keras.layers.embeddings import Embedding
+
 import modelParameters
+from convert_review import build_design_matrix
 
 basename = "CNN_"
 suffix = datetime.datetime.now().strftime("%m%d_%I%M")
@@ -120,7 +119,7 @@ def build_CNN_model(inputType, do_training=False, model_inputs=None, loss_func='
 
         review_input = Input(shape=(modelParameters.MaxLen_w,), dtype='int32', name="1hot_review")
 
-        layer = Embedding(modelParameters.VocabSize_w + 3, embedding_dims,
+        layer = Embedding(modelParameters.VocabSize_w + modelParameters.INDEX_FROM, embedding_dims,
                           input_length=modelParameters.MaxLen_w, name='embeddingLayer')(review_input)
 
     else:
