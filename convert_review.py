@@ -5,11 +5,10 @@ Created by John P Cavalieri
 from __future__ import print_function
 
 import cPickle
+import numpy
 import os
 from functools import partial
 from itertools import combinations
-
-import numpy
 
 import modelParameters
 from preprocess import (generate_word_list, generate_char_list,
@@ -35,7 +34,6 @@ def to_onehot_vector(reviewObject, one_hot_maps, use_words,
     :param reviewObject: tuple containing rating and movie review
     :param one_hot_maps: mapping from words to indices
     :param use_words: False to use chars
-    :param skip_top: remove K most frequently occuring words seen during training i.e. the,is,a,...
     :param maxlen: upper limit on words per review; default value set in modelParameters module
     :param truncate: 'pre' truncates at the beginning of review & 'post' truncates at the end of review
     :param padding: 'pre' pads beginning of review & 'post' pads at the end of review if review length < maxlen

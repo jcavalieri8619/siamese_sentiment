@@ -11,84 +11,56 @@ from keras.layers import Input
 from keras.layers.embeddings import Embedding
 
 import modelParameters
-from convert_review import build_design_matrix
 
 basename = "CNN_"
 suffix = datetime.datetime.now().strftime("%m%d_%I%M")
 filename = "_".join([basename, suffix])
 
-USE_WORDS = True
-
-if USE_WORDS:
-    skipTop = modelParameters.skip_top
-    vocabSize = modelParameters.VocabSize_w
-    maxlen = modelParameters.MaxLen_w
-else:
-    skipTop = 0
-    vocabSize = modelParameters.VocabSize_c
-    maxlen = modelParameters.MaxLen_c
-
-devSplit = modelParameters.devset_split
-
-batch_size = 20
-nb_epoch = 5
+batch_size = 60
+nb_epoch = 8
 region = 'same'
 
 embedding_dims = 200
+embedding_init = 'uniform'
+embedding_l1_reg = 0.00000001
 
-num_filters1 = 1300
+num_filters1 = 1000
 filter_length1 = 2
 pool_len1 = 2
+conv_init1 = 'glorot_normal'
+conv_activation1 = 'relu'
+conv_l2_reg1 = 0.000001
 
 num_filters2 = 800
 filter_length2 = 3
 pool_len2 = 2
+conv_init2 = 'uniform'
+conv_activation2 = 'relu'
+conv_l2_reg2 = 0.000001
 
-num_filters3 = 500
-filter_length3 = 4
+num_filters3 = 400
+filter_length3 = 3
 pool_len3 = 2
+conv_init3 = 'glorot_normal'
+conv_activation3 = 'relu'
+conv_l2_reg3 = 0.000001
 
-num_filters4 = 300
-filter_length4 = 5
-pool_len4 = 2
+dense_dims1 = 800
+dense_activation1 = 'relu'
+dense_init1 = 'zero'
+dense_l2_reg1 = 0.000001
 
-dense_dims1 = 1250
-dense_dims2 = 800
-dense_dims3 = 250
+dense_dims2 = 200
+dense_activation2 = 'relu'
+dense_init2 = 'glorot_uniform'
+dense_l2_reg2 = 0.000001
 
+dense_dims_final = 1
+dense_activation_final = 'sigmoid'
+dense_init_final = 'glorot_uniform'
+# dense_l2_reg_final='N/A'
 
-def build_CNN_input(vocab_size=vocabSize, usewords=USE_WORDS,
-                    skiptop=skipTop, devsplit=devSplit, verbose=True, **kwargs):
-    """
-
-    :param vocab_size:
-    :param usewords:
-    :param skiptop:
-    :param devsplit:
-    :param verbose:
-    :param kwargs:
-    :return:
-    """
-
-    if verbose:
-        print('Building CNN Inputs')
-
-    ((X_train, y_train), (X_dev, y_dev), (X_val, y_val)) = build_design_matrix(vocab_size=vocab_size,
-                                                                               use_words=usewords,
-                                                                               skip_top=skiptop,
-                                                                               dev_split=devsplit,
-                                                                               **kwargs
-                                                                               )
-
-    if verbose:
-        print('X_train shape: {}'.format(X_train.shape))
-        print('X_dev shape: {}'.format(X_dev.shape))
-        print('X_test shape: {}'.format(X_val.shape))
-        print('y_train shape: {}'.format(y_train.shape))
-        print('y_dev shape: {}'.format(y_dev.shape))
-        print('y_test shape: {}'.format(y_val.shape))
-
-    return {'training': (X_train, y_train), "dev": (X_dev, y_dev), "val": (X_val, y_val)}
+from model_input_builders import build_CNN_input
 
 
 def build_CNN_model(inputType, do_training=False, model_inputs=None, loss_func='binary_crossentropy',
@@ -113,25 +85,30 @@ def build_CNN_model(inputType, do_training=False, model_inputs=None, loss_func='
 
     defined_input_types = {EMBEDDING_TYPE, ONEHOT_TYPE}
 
-    assert inputType in defined_input_types, "unknown input type"
+    assert inputType in defined_input_types, "unknown input type {0}".format(inputType)
 
     if inputType is ONEHOT_TYPE:
 
-        review_input = Input(shape=(modelParameters.MaxLen_w,), dtype='int32', name="1hot_review")
+        review_input = Input(shape=(modelParameters.MaxLen_w,), dtype='int32', name="ONEHOT_INPUT")
 
         layer = Embedding(modelParameters.VocabSize_w + modelParameters.INDEX_FROM, embedding_dims,
-                          input_length=modelParameters.MaxLen_w, name='embeddingLayer')(review_input)
+                          init=embedding_init, dropout=0.3,
+                          input_length=modelParameters.MaxLen_w, name='1hot_embeddingLayer')(review_input)
+
+    elif inputType is EMBEDDING_TYPE:
+        review_input = Input(shape=(modelParameters.MaxLen_w, embedding_dims), dtype="float32", name="EMBEDDING_INPUT")
+        layer = review_input
 
     else:
-        review_input = Input(shape=(modelParameters.MaxLen_w, embedding_dims), dtype="float32", name="embedding_review")
-        layer = review_input
+        raise ValueError("Bad inputType arg to build_CNN_model")
 
     layer = Convolution1D(nb_filter=num_filters1,
                           filter_length=filter_length1,
                           border_mode=region,
-                          activation='relu',
+                          activation=conv_activation1,
+                          init=conv_init1,
                           subsample_length=1,
-                          name='ConvLayer1')(layer, )
+                          name='ConvLayer1')(layer)
 
     layer = Dropout(0.25, )(layer)
 
@@ -140,60 +117,45 @@ def build_CNN_model(inputType, do_training=False, model_inputs=None, loss_func='
     layer = Convolution1D(nb_filter=num_filters2,
                           filter_length=filter_length2,
                           border_mode=region,
-                          activation='relu',
+                          activation=conv_activation2,
+                          init=conv_init2,
                           subsample_length=1,
-                          name='ConvLayer2'
-                          )(layer, )
+                          name='ConvLayer2')(layer)
 
     layer = Dropout(0.30)(layer)
 
     layer = MaxPooling1D(pool_length=pool_len2)(layer)
 
     layer = Convolution1D(nb_filter=num_filters3,
-                          filter_length=num_filters3,
+                          filter_length=filter_length3,
                           border_mode=region,
-                          activation='relu',
+                          activation=conv_activation3,
+                          init=conv_init3,
                           subsample_length=1,
-                          name='ConvLayer3'
-                          )(layer, )
+                          name='ConvLayer3')(layer)
 
     layer = Dropout(0.35)(layer)
 
     layer = MaxPooling1D(pool_length=pool_len3)(layer)
 
-    layer = Convolution1D(nb_filter=num_filters4,
-                          filter_length=filter_length4,
-                          border_mode=region,
-                          activation='relu',
-                          subsample_length=1,
-                          name='ConvLayer4',
-                          )(layer, )
-
-    layer = Dropout(0.35)(layer)
-
-    layer = MaxPooling1D(pool_length=pool_len4)(layer)
-
     layer = Flatten()(layer)
 
-    layer = Dense(dense_dims1, activation='relu',
+    layer = Dense(dense_dims1, activation=dense_activation1, init=dense_init1,
                   name='dense1')(layer)
 
     layer = Dropout(0.35)(layer)
 
-    layer = Dense(dense_dims2, activation='relu',
-                  name='dense2')(layer)
-
-    layer = Dropout(0.35)(layer)
-
-    out_A = Dense(dense_dims3, activation='relu',
-                  name='dense3_outA')(layer)
+    out_A = Dense(dense_dims2, activation=dense_activation2, init=dense_init2,
+                  name='dense2_outA')(layer)
 
     if is_IntermediateModel:
         CNN_model = Model(input=[review_input], output=[out_A], name="CNN_model")
         return CNN_model
 
-    out_B = Dense(1, activation='sigmoid',
-                  name='output_Full')(out_A, )
+    out_A = Dropout(0.35)(out_A)
+
+    out_B = Dense(dense_dims_final, activation=dense_activation_final, init=dense_init_final,
+                  name='output_Full')(out_A)
 
     CNN_model = Model(input=[review_input], output=[out_B], name="CNN_model")
 
@@ -216,7 +178,7 @@ def build_CNN_model(inputType, do_training=False, model_inputs=None, loss_func='
                              validation_data=model_inputs['dev'],
                              callbacks=call_backs)
 
-        return CNN_model, hist
+        return hist
 
     return CNN_model
 
@@ -251,12 +213,22 @@ def save_CNNmodel_specs(model, hist, **kwargs):
                                        num_filters3,
                                        filter_length3,
                                        pool_len3,
-                                       num_filters4,
-                                       filter_length4,
-                                       pool_len4,
+                                       "NA",  # num_filters4,
+                                       "NA",  # filter_length4,
+                                       "NA",  # pool_len4,
                                        dense_dims1,
                                        dense_dims2,
-                                       dense_dims3,
+                                       "NA",  # dense_dims3,
                                        moreArgs=kwargs
                                        )
         f.write(specs)
+
+
+##TESTING
+modelinputs = build_CNN_input(truncate='pre', padding='post', DEBUG=False)
+build_CNN_model('1hotVector', True, modelinputs)
+
+if __name__ is "__main__":
+    # modelinputs = build_CNN_input(truncate='pre', padding='post', DEBUG=False)
+    # build_CNN_model('1hotVector', True,modelinputs)
+    print("IN MAIN")

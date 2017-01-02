@@ -15,7 +15,6 @@ from keras.models import Model
 
 import modelParameters
 from CNN_model import save_CNNmodel_specs, build_CNN_model
-from convert_review import construct_designmatrix_pairs
 from loss_functions import contrastiveLoss
 from siamese_activations import vectorDifference, squaredl2
 
@@ -62,39 +61,6 @@ pool_len4 = 2
 dense_dims1 = 1250
 dense_dims2 = 800
 dense_dims3 = 250
-
-
-def build_siamese_input(verbose=True, **kwargs):
-    """
-
-    :param verbose:
-    :return:
-    """
-
-    if verbose:
-        print('building pairs of reviews for siamese model input')
-
-    trainCutoff = kwargs.get('trainingSet_cutoff', 50000)
-
-    ((trainingSets), (devSets), (devKNNsets), (valSets), (testSet)) = construct_designmatrix_pairs(VocabSize,
-                                                                                                   useWords=USEWORDS,
-                                                                                                   skipTop=skipTop,
-                                                                                                   trainingSet_cutoff=trainCutoff,
-                                                                                                   devSplit=DEVSPLIT)
-
-    if verbose:
-        print(len(trainingSets[0]), 'train sequences length')
-        print(len(devSets[0]), 'dev sequences length')
-
-        print(len(devKNNsets[0]), 'devKNN sequences length')
-        print(len(valSets[0]), 'test sequences length')
-
-        print('train shape:', trainingSets[0].shape)
-        print('dev shape:', devSets[0].shape)
-        print('devKNN shape:', devKNNsets[0].shape)
-        print('test shape:', valSets[0].shape)
-
-    return {'training': trainingSets, 'dev': devSets, 'KNNdev': devKNNsets, 'val': valSets, 'KNNtest': testSet}
 
 
 def build_siamese_model(inputType, do_training=False, model_inputs=None, weight_path=None, verbose=True, **kwargs):
@@ -163,13 +129,13 @@ def build_siamese_model(inputType, do_training=False, model_inputs=None, weight_
 
         call_backs = [checkpoint, earlyStop]
 
-        hist = siamese_model.fit({'Lreview': X_left, 'Rreview': X_right,},
+        hist = siamese_model.fit({'Lreview': X_left, 'Rreview': X_right, },
                                  {'energy_output': similarity},
                                  batch_size=batch_size,
                                  nb_epoch=num_epochs,
                                  verbose=1,
                                  validation_data=
-                                 ({'Lreview': Xdev_left, 'Rreview': Xdev_right,},
+                                 ({'Lreview': Xdev_left, 'Rreview': Xdev_right, },
                                   {'energy_output': dev_similarity}),
                                  callbacks=call_backs)
 
