@@ -7,16 +7,16 @@ from __future__ import print_function
 import datetime
 import os
 
-from keras.callbacks import ModelCheckpoint, EarlyStopping
-from keras.engine.topology import merge
+from keras.callbacks import ModelCheckpoint, EarlyStopping, ReduceLROnPlateau
 from keras.layers import Dense
 from keras.layers import Input
+from keras.layers.merge import _Merge
 from keras.models import Model
 
 import modelParameters
 from CNN_model import save_CNNmodel_specs, build_CNN_model
 from loss_functions import contrastiveLoss
-from siamese_activations import vectorDifference, squaredl2
+from siamese_activations import squaredl2
 
 USEWORDS = True
 
@@ -36,31 +36,21 @@ suffix = datetime.datetime.now().strftime("%m%d_%I%M")
 filename = "_".join([basename, suffix])
 
 batch_size = 20
-num_epochs = 4
+num_epochs = 10
 
-region = 'same'
 
-embedding_dims = 200
+class Diff(_Merge):
+    """Layer that takes difference of a list of inputs.
+    It takes as input a list of tensors,
+    all of the same shape, and returns
+    a single tensor (also of the same shape).
+    """
 
-num_filters1 = 1300
-filter_length1 = 2
-pool_len1 = 2
-
-num_filters2 = 800
-filter_length2 = 3
-pool_len2 = 2
-
-num_filters3 = 500
-filter_length3 = 4
-pool_len3 = 2
-
-num_filters4 = 300
-filter_length4 = 5
-pool_len4 = 2
-
-dense_dims1 = 1250
-dense_dims2 = 800
-dense_dims3 = 250
+    def _merge_function(self, inputs):
+        output = inputs[0]
+        for i in range(1, len(inputs)):
+            output -= inputs[i]
+        return output
 
 
 def build_siamese_model(inputType, do_training=False, model_inputs=None, weight_path=None, verbose=True, **kwargs):
@@ -89,26 +79,24 @@ def build_siamese_model(inputType, do_training=False, model_inputs=None, weight_
 
     CNN_model = build_CNN_model(inputType=inputType, is_IntermediateModel=True)
 
-    Lreview = Input(shape=(maxReviewLen,), dtype='int32', name="Lreview")
-    Rreview = Input(shape=(maxReviewLen,), dtype='int32', name="Rreview")
+    Lreview = Input(shape=(maxReviewLen,), dtype='float32', name="Lreview")
+    Rreview = Input(shape=(maxReviewLen,), dtype='float32', name="Rreview")
 
     rightbranch = CNN_model([Lreview])
     leftbranch = CNN_model([Rreview])
 
     # first take the difference of the final feature representations from the CNN_model
     # represented by leftbranch and rightbranch
-    merged_vector = merge([leftbranch, rightbranch], mode=vectorDifference, output_shape=merged_outshape,
-                          name='merged_vector')
+    merged_vector = Diff()([leftbranch, rightbranch], name='merged_vector')
 
     # then that difference vector is fed into the final fully connected layer that
     # outputs the energy i.e. squared euclidian distance ||leftbranch-rightbranch||
-    energy = Dense(1, activation=squaredl2,
-                   name='energy_output')(merged_vector)
+    energy = Dense(1, activation=squaredl2, name='energy_output')(merged_vector)
 
-    siamese_model = Model(input=[Lreview, Rreview], output=[energy],
+    siamese_model = Model(inputs=[Lreview, Rreview], outputs=[energy],
                           name="siamese_model")
 
-    siamese_model.compile(optimizer='adam', loss=contrastiveLoss, )
+    siamese_model.compile(optimizer='adam', loss=contrastiveLoss, metrics=['acc'])
 
     models = {'siamese': siamese_model, 'CNN': CNN_model}
 
@@ -127,12 +115,17 @@ def build_siamese_model(inputType, do_training=False, model_inputs=None, weight_
 
         earlyStop = EarlyStopping(patience=1, verbose=1, monitor='val_loss')
 
-        call_backs = [checkpoint, earlyStop]
+        LRadjuster = ReduceLROnPlateau(monitor='val_loss', factor=0.30, patience=0, verbose=1, cooldown=1,
+                                       min_lr=0.00001, epsilon=1e-2)
+
+        call_backs = [checkpoint, earlyStop, LRadjuster]
+
+        siamese_model.summary()
 
         hist = siamese_model.fit({'Lreview': X_left, 'Rreview': X_right, },
                                  {'energy_output': similarity},
                                  batch_size=batch_size,
-                                 nb_epoch=num_epochs,
+                                 epochs=num_epochs,
                                  verbose=1,
                                  validation_data=
                                  ({'Lreview': Xdev_left, 'Rreview': Xdev_right, },

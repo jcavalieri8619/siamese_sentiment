@@ -5,10 +5,11 @@ Created by John P Cavalieri
 from __future__ import print_function
 
 import cPickle
-import numpy
 import os
 from functools import partial
 from itertools import combinations
+
+import numpy
 
 import modelParameters
 from preprocess import (generate_word_list, generate_char_list,
@@ -54,21 +55,21 @@ def to_onehot_vector(reviewObject, one_hot_maps, use_words,
 
     generate_symbol_list = generate_word_list if use_words else generate_char_list
 
-    word_list = generate_symbol_list(review)
+    sym_list = generate_symbol_list(review)
     start_index = 0
     if truncate is 'pre':
-        if len(word_list) > MAXlen:
-            word_list = word_list[-(MAXlen + 1):]
+        if len(sym_list) > MAXlen:
+            sym_list = sym_list[-(MAXlen + 1):]
         elif padding is 'pre':
-            start_index = MAXlen - len(word_list) - 1
+            start_index = MAXlen - len(sym_list) - 1
 
     elif truncate is 'post' and padding is 'pre':
-        if len(word_list) < MAXlen:
-            start_index = MAXlen - len(word_list) - 1
+        if len(sym_list) < MAXlen:
+            start_index = MAXlen - len(sym_list) - 1
 
     vector_of_onehots = numpy.zeros((1, MAXlen), dtype='float32')
     vector_of_onehots[0, start_index] = modelParameters.START_SYMBOL
-    for indx, word in enumerate(word_list[:MAXlen - 1]):
+    for indx, word in enumerate(sym_list[:MAXlen - 1]):
         vector_of_onehots[0, (start_index + indx + 1)] = one_hot_maps.get(word, modelParameters.UNK_INDEX)
 
     return vector_of_onehots, rating
@@ -304,7 +305,7 @@ def construct_designmatrix_pairs(VocabSize, useWords, skipTop=0, devSplit=None,
      for siamese input. Effectively we take all positive reviews choose 2, all
      negative reviews choose 2 and all reviews choose 2. Lecunn uses permutations,
      but that seems redundant. Ultimately the entire space of combinations will
-     require an on-dist batch portion because its massive; for now I am just using a
+     require an on-disk batch portion because its massive; for now I am just using a
      subset controlled by trainingSet_cutoff and devSet_cutoff in addition to limiting the
      number of mixed pairs created. If just creating the pairs requires too much
      RAM then set TRAIN_LOW_RAM_CUTOFF at the top of the module to

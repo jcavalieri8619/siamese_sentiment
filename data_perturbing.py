@@ -4,10 +4,10 @@ Created by John P Cavalieri on 5/31/16
 """
 
 import copy
-import h5py
 import os
 import shutil
 
+import h5py
 import keras.backend as K
 import numpy as np
 import theano
@@ -340,7 +340,7 @@ def perturb_data(loss_func, optimizer, model, optimal_subset, numEpochs, batchSi
                          model.layers[0].W.get_value(), epsilon]
 
     loss = constrained_loss((lambda ytru, ypred: neg(loss_func(ytru, ypred)) if negateLoss else loss_func(ytru, ypred)),
-                            constrain_fn, constrain_fn_args, init='uniform',
+                            constrain_fn, constrain_fn_args,
                             constraint_weight=constrainWeight)
 
     model.compile(optimizer=optimizer, loss=loss, metrics=['accuracy'])
@@ -358,8 +358,10 @@ def perturb_data(loss_func, optimizer, model, optimal_subset, numEpochs, batchSi
     return model
 
 
+# now that contrainWeight is equivalent to regularization param and not a learnable lagrange multiplier,
+# no need for epsilon--set to zero for now but probably should just remove
 def perturb_testing(loss_fn, optimizer, invertTargets, negateLoss, numEpochs, batchSize, subset_size,
-                    weightPath, constrainWeight=1.0, epsilon=0.0, ):
+                    weightPath, constrainWeight=5.0, epsilon=0.0, ):
     """
 
     :param loss_fn:
@@ -375,12 +377,13 @@ def perturb_testing(loss_fn, optimizer, invertTargets, negateLoss, numEpochs, ba
     :return:
     """
 
-    from CNN_model import build_CNN_input, build_CNN_model
+    from CNN_model import build_CNN_model
+    from model_input_builders import build_CNN_input
 
     modelInputs = build_CNN_input()
 
-    trained_1hotModel = build_CNN_model('1hotVector', weight_path=weightPath)
-    trained_model_orig = build_CNN_model('1hotVector', weight_path=weightPath)
+    trained_1hotModel = build_CNN_model('1hotVector', load_weight_path=weightPath)
+    trained_model_orig = build_CNN_model('1hotVector', load_weight_path=weightPath)
 
     print("identifying an optimal subset of inputs (X,y=1) to perturb")
 

@@ -34,7 +34,7 @@ VocabSize_w = 90000
 VocabSize_c = 58
 
 # median review length in words is 2128
-MaxLen_w = 1000
+MaxLen_w = 2120  # 1000
 
 # 13.5 is median word length of training data
 MaxLen_c = (14 * MaxLen_w)

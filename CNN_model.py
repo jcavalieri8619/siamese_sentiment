@@ -3,68 +3,99 @@ from __future__ import print_function
 import datetime
 import os
 
-from keras.callbacks import ModelCheckpoint, EarlyStopping
+from keras.callbacks import ModelCheckpoint, EarlyStopping, ReduceLROnPlateau
 from keras.engine.training import Model
+from keras.initializers import RandomUniform
 from keras.layers import Convolution1D, MaxPooling1D
 from keras.layers import Dense, Dropout, Flatten
 from keras.layers import Input
+from keras.layers import SpatialDropout1D
+from keras.layers.advanced_activations import LeakyReLU
 from keras.layers.embeddings import Embedding
+from keras.metrics import binary_accuracy
+from keras.optimizers import Adam
+from keras.regularizers import l1, l2
 
 import modelParameters
 
-basename = "CNN_"
+basename = "CNN"
 suffix = datetime.datetime.now().strftime("%m%d_%I%M")
 filename = "_".join([basename, suffix])
 
-batch_size = 60
-nb_epoch = 8
+filename_config = "_".join([basename, "config", suffix])
+
+batch_size = 35
+nb_epoch = 2
 region = 'same'
 
-embedding_dims = 200
-embedding_init = 'uniform'
-embedding_l1_reg = 0.00000001
+leaky_relu = LeakyReLU(alpha=0.13)
 
-num_filters1 = 1000
-filter_length1 = 2
+embedding_dims = 50
+embedding_init = RandomUniform()
+embedding_reg = l1(0.0)
+
+convL2 = 0.001
+
+num_filters1 = 250  # 1000
+filter_length1 = 5
 pool_len1 = 2
-conv_init1 = 'glorot_normal'
+conv_init1 = "glorot_uniform"
 conv_activation1 = 'relu'
-conv_l2_reg1 = 0.000001
+conv_reg1 = l2(convL2)
 
-num_filters2 = 800
+num_filters2 = 200  # 800
 filter_length2 = 3
 pool_len2 = 2
-conv_init2 = 'uniform'
+conv_init2 = "glorot_uniform"
 conv_activation2 = 'relu'
-conv_l2_reg2 = 0.000001
+conv_reg2 = l2(convL2)
 
-num_filters3 = 400
+num_filters3 = 100  # 300
 filter_length3 = 3
 pool_len3 = 2
-conv_init3 = 'glorot_normal'
+conv_init3 = "glorot_uniform"
 conv_activation3 = 'relu'
-conv_l2_reg3 = 0.000001
+conv_reg3 = l2(convL2)
 
-dense_dims1 = 800
+num_filters4 = 500  # 300
+filter_length4 = 4
+pool_len4 = 2
+conv_init4 = "glorot_uniform"
+conv_activation4 = 'relu'
+conv_reg4 = l2(convL2)
+
+denseL2 = 0.001
+
+dense_dims0 = 250  # 600
+dense_activation0 = 'relu'
+dense_init0 = "glorot_normal"
+dense_reg0 = l2(denseL2)
+
+dense_dims1 = 100  # 500
 dense_activation1 = 'relu'
-dense_init1 = 'zero'
-dense_l2_reg1 = 0.000001
+dense_init1 = "glorot_normal"
+dense_reg1 = l2(denseL2)
 
-dense_dims2 = 200
+dense_dims2 = 100  # 400
 dense_activation2 = 'relu'
-dense_init2 = 'glorot_uniform'
-dense_l2_reg2 = 0.000001
+dense_init2 = "glorot_normal"
+dense_reg2 = l2(denseL2)
+
+dense_dims3 = 100
+dense_activation3 = 'relu'
+dense_init3 = "glorot_normal"
+dense_reg3 = l2(denseL2)
 
 dense_dims_final = 1
 dense_activation_final = 'sigmoid'
-dense_init_final = 'glorot_uniform'
-# dense_l2_reg_final='N/A'
+dense_init_final = "glorot_normal"
 
-from model_input_builders import build_CNN_input
+
+# dense_l2_reg_final='N/A'
 
 
 def build_CNN_model(inputType, do_training=False, model_inputs=None, loss_func='binary_crossentropy',
-                    optimize_proc='adam', is_IntermediateModel=False, weight_path=None, **kwargs):
+                    optimize_proc='adam', is_IntermediateModel=False, load_weight_path=None, **kwargs):
     """
 
     :param inputType:
@@ -73,7 +104,7 @@ def build_CNN_model(inputType, do_training=False, model_inputs=None, loss_func='
     :param loss_func:
     :param optimize_proc:
     :param is_IntermediateModel:
-    :param weight_path:
+    :param load_weight_path:
     :param kwargs:
     :return:
     """
@@ -89,11 +120,14 @@ def build_CNN_model(inputType, do_training=False, model_inputs=None, loss_func='
 
     if inputType is ONEHOT_TYPE:
 
-        review_input = Input(shape=(modelParameters.MaxLen_w,), dtype='int32', name="ONEHOT_INPUT")
+        review_input = Input(shape=(modelParameters.MaxLen_w,), dtype='float32',
+                             name="ONEHOT_INPUT")
 
         layer = Embedding(modelParameters.VocabSize_w + modelParameters.INDEX_FROM, embedding_dims,
-                          init=embedding_init, dropout=0.3,
+                          embeddings_initializer=embedding_init, embeddings_regularizer=embedding_reg,
                           input_length=modelParameters.MaxLen_w, name='1hot_embeddingLayer')(review_input)
+
+        layer = SpatialDropout1D(0.50)(layer)
 
     elif inputType is EMBEDDING_TYPE:
         review_input = Input(shape=(modelParameters.MaxLen_w, embedding_dims), dtype="float32", name="EMBEDDING_INPUT")
@@ -102,85 +136,140 @@ def build_CNN_model(inputType, do_training=False, model_inputs=None, loss_func='
     else:
         raise ValueError("Bad inputType arg to build_CNN_model")
 
-    layer = Convolution1D(nb_filter=num_filters1,
-                          filter_length=filter_length1,
-                          border_mode=region,
+    layer = Convolution1D(filters=num_filters1,
+                          kernel_size=filter_length1,
+                          padding=region,
+                          strides=1,
                           activation=conv_activation1,
-                          init=conv_init1,
-                          subsample_length=1,
+                          kernel_initializer='glorot_uniform',
+                          bias_initializer='zeros',
+                          kernel_regularizer=conv_reg1,
+                          dilation_rate=1,
                           name='ConvLayer1')(layer)
 
-    layer = Dropout(0.25, )(layer)
+    layer = SpatialDropout1D(0.50)(layer)
 
-    layer = MaxPooling1D(pool_length=pool_len1)(layer)
+    layer = MaxPooling1D(pool_size=pool_len1)(layer)
 
-    layer = Convolution1D(nb_filter=num_filters2,
-                          filter_length=filter_length2,
-                          border_mode=region,
-                          activation=conv_activation2,
-                          init=conv_init2,
-                          subsample_length=1,
-                          name='ConvLayer2')(layer)
+    # layer = Convolution1D(filters=num_filters2,
+    #                       kernel_size=filter_length2,
+    #                       padding=region,
+    #                       strides=1,
+    #                       activation=conv_activation2,
+    #                       kernel_initializer=conv_init2,
+    #                       kernel_regularizer=conv_reg2,
+    #                       dilation_rate=1,
+    #                       name='ConvLayer2')(layer)
+    #
+    # layer = SpatialDropout1D(0.50)(layer)
+    #
+    # layer = MaxPooling1D(pool_size=pool_len2)(layer)
 
-    layer = Dropout(0.30)(layer)
+    # layer = Convolution1D(filters=num_filters3,
+    #                       kernel_size=filter_length3,
+    #                       padding=region,
+    #                       activation=conv_activation3,
+    #                       kernel_initializer=conv_init3,
+    #                       kernel_regularizer=conv_reg3,
+    #                       dilation_rate=1,
+    #                       name='ConvLayer3')(layer)
+    #
+    # layer = SpatialDropout1D(0.50)(layer)
+    #
+    # layer = MaxPooling1D(pool_size=pool_len3)(layer)
 
-    layer = MaxPooling1D(pool_length=pool_len2)(layer)
 
-    layer = Convolution1D(nb_filter=num_filters3,
-                          filter_length=filter_length3,
-                          border_mode=region,
-                          activation=conv_activation3,
-                          init=conv_init3,
-                          subsample_length=1,
-                          name='ConvLayer3')(layer)
 
-    layer = Dropout(0.35)(layer)
-
-    layer = MaxPooling1D(pool_length=pool_len3)(layer)
+    # #layer = GlobalMaxPool1D()(layer)
+    #
+    # layer = Convolution1D(filters=num_filters4,
+    #                       kernel_size=filter_length4,
+    #                       padding=region,
+    #                       activation=conv_activation4,
+    #                       kernel_initializer=conv_init4,
+    #                       kernel_regularizer=conv_reg4,
+    #                       dilation_rate=1,
+    #                       name='ConvLayer4')(layer)
+    #
+    # #layer = leaky_relu(layer)
+    #
+    # layer = SpatialDropout1D(0.50)(layer)
+    #
+    # layer = MaxPooling1D(pool_size=pool_len4)(layer)
+    # #layer = GlobalMaxPool1D()(layer)
+    #
+    # # layer = BatchNormalization()(layer)
 
     layer = Flatten()(layer)
 
-    layer = Dense(dense_dims1, activation=dense_activation1, init=dense_init1,
+    layer = Dense(dense_dims0, activation=dense_activation0, kernel_regularizer=dense_reg0,
+                  kernel_initializer='glorot_normal', bias_initializer='zeros',
+                  name='dense0')(layer)
+
+    layer = Dropout(0.50)(layer)
+
+    layer = Dense(dense_dims1, activation=dense_activation1, kernel_regularizer=dense_reg1,
+                  kernel_initializer='glorot_normal', bias_initializer='zeros',
                   name='dense1')(layer)
 
-    layer = Dropout(0.35)(layer)
+    layer = Dropout(0.50)(layer)
 
-    out_A = Dense(dense_dims2, activation=dense_activation2, init=dense_init2,
-                  name='dense2_outA')(layer)
-
+    # layer = Dense(dense_dims2, activation=dense_activation2, kernel_regularizer=dense_reg2,
+    #               kernel_initializer=dense_init2,
+    #               name='dense2')(layer)
+    #
+    #
+    # layer = Dropout(0.50)(layer)
+    #
+    # layer = Dense(dense_dims3, activation=dense_activation3, kernel_regularizer=dense_reg3,
+    #               kernel_initializer=dense_init3,
+    #               name='dense3_outA')(layer)
+    # #layer = leaky_relu(layer)
+    #
     if is_IntermediateModel:
-        CNN_model = Model(input=[review_input], output=[out_A], name="CNN_model")
-        return CNN_model
+        return Model(inputs=[review_input], outputs=[layer], name="CNN_model")
 
-    out_A = Dropout(0.35)(out_A)
+    #
+    # layer = Dropout(0.5)(layer)
 
-    out_B = Dense(dense_dims_final, activation=dense_activation_final, init=dense_init_final,
-                  name='output_Full')(out_A)
+    layer = Dense(dense_dims_final, activation=dense_activation_final, kernel_initializer=dense_init_final,
+                  kernel_regularizer=dense_reg0,
+                  name='output_Full')(layer)
 
-    CNN_model = Model(input=[review_input], output=[out_B], name="CNN_model")
+    CNN_model = Model(inputs=[review_input], outputs=[layer], name="CNN_model")
 
-    CNN_model.compile(optimizer=optimize_proc, loss=loss_func)
+    CNN_model.compile(optimizer=Adam(lr=0.001, decay=0.0), loss=loss_func, metrics=[binary_accuracy])
 
-    if weight_path is not None:
-        CNN_model.load_weights(weight_path)
+    if load_weight_path is not None:
+        CNN_model.load_weights(load_weight_path)
 
+    hist = ""
     if do_training:
         weightPath = os.path.join(modelParameters.WEIGHT_PATH, filename)
-        checkpoint = ModelCheckpoint(weightPath + '_W.{epoch:02d}-{val_loss:.4f}.hdf5',
-                                     verbose=1, save_best_only=True, monitor='val_loss')
-        earlyStop = EarlyStopping(patience=1, verbose=1, monitor='val_loss')
+        configPath = os.path.join(modelParameters.WEIGHT_PATH, filename_config)
 
-        call_backs = [checkpoint, earlyStop]
+        with open(configPath + ".json", 'wb') as f:
+            f.write(CNN_model.to_json())
+
+        checkpoint = ModelCheckpoint(weightPath + '_W.{epoch:02d}-{val_loss:.4f}.hdf5',
+                                     verbose=1, save_best_only=True, save_weights_only=False, monitor='val_loss')
+
+        earlyStop = EarlyStopping(patience=3, verbose=1, monitor='val_loss')
+
+        LRadjuster = ReduceLROnPlateau(monitor='val_loss', factor=0.30, patience=0, verbose=1, cooldown=1,
+                                       min_lr=0.00001, epsilon=1e-2)
+
+        call_backs = [checkpoint, earlyStop, LRadjuster]
+
+        CNN_model.summary()
 
         hist = CNN_model.fit(*model_inputs['training'],
                              batch_size=batch_size,
-                             nb_epoch=nb_epoch, verbose=1,
+                             epochs=nb_epoch, verbose=1,
                              validation_data=model_inputs['dev'],
                              callbacks=call_backs)
 
-        return hist
-
-    return CNN_model
+    return {"model": CNN_model, "hist": hist}
 
 
 def save_CNNmodel_specs(model, hist, **kwargs):
@@ -224,9 +313,13 @@ def save_CNNmodel_specs(model, hist, **kwargs):
         f.write(specs)
 
 
-##TESTING
-modelinputs = build_CNN_input(truncate='pre', padding='post', DEBUG=False)
-build_CNN_model('1hotVector', True, modelinputs)
+def cnn_test():
+    from model_input_builders import build_CNN_input
+
+    modelinputs = build_CNN_input(truncate='pre', padding='post', DEBUG=False)
+    rv = build_CNN_model('1hotVector', True, modelinputs)
+    return modelinputs, rv
+
 
 if __name__ is "__main__":
     # modelinputs = build_CNN_input(truncate='pre', padding='post', DEBUG=False)
